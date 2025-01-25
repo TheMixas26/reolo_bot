@@ -1,17 +1,72 @@
 from data import *
-import telebot
+from bank import *
+import telebot, os
 from telebot import types
+
+
+class user:
+	def __init__(self, id, name, surname, balance):
+		self.id = id
+		self.name = name
+		self.surname = surname
+		self.balance = balance
+
+
 
 predlojka_bot = telebot.TeleBot(TOKEN)
 # object!="" or object!='None' or object != None or object!=''
 print("predlojka.py in Предложка Империи succesfully started")
 
+
+
+
 def none_type(object):
 	return "" if object==None else f'{object}'
 
+
+
+
 @predlojka_bot.message_handler(commands=['start'])
 def start(message):
-	predlojka_bot.reply_to(message, text="Здравствуйте\!\!\! Добро поджаловать в Предложку Империи\!\nПрисылайте сюда всё, что только душе угодно, а я передам админу на рассмотрение\! Если его всё устроит, ваше сообщение будет опубликовано\!\n\n_P\.S\. Анонимки пока нет_", parse_mode='MarkdownV2')
+	if f"{message.chat_id}.pickle" in os.listdir(path='./database'):
+
+		predlojka_bot.reply_to(message, text="Вы есть")
+
+	else:
+		predlojka_bot.reply_to(message, text="Вас нет")
+
+
+
+@predlojka_bot.message_handler(commands=['bank'])
+def bank_meetings(message):    
+    reply_button=types.ReplyKeyboardMarkup(row_width=2)
+    btn1=types.KeyboardButton("💰Узнать баланс")
+    btn2=types.KeyboardButton("🔁Перевод")
+    btn3=types.KeyboardButton("📈Курс валюты")
+    btn4=types.KeyboardButton("🚫Оплатить штрафы")
+
+    reply_button.add(btn1, btn2, btn3, btn4)
+
+    predlojka_bot.send_message(message.chat.id, "Здравствуйте! Добро пожаловать в Имперский банк! Чтобы вы хотели сделать?", reply_markup=reply_button)
+
+    
+    predlojka_bot.register_next_step_handler(message, what_do_you_want_from_bank)
+
+
+def what_do_you_want_from_bank(message):
+	q=types.ReplyKeyboardRemove()
+	
+	if "баланс" in message.text.lower:
+		predlojka_bot.reply_to(message, f"Ваш баланс: {bank_get_balance(message)}")
+	elif "перев" in message.text.lower:
+		print("гггн")
+	elif "курс" in message.text.lower:
+		print("abaaa")
+	elif "штраф" in message.text.lower:
+		print("ййцуй")
+	
+
+
 @predlojka_bot.message_handler(commands=['help'])
 def help(message):
 	predlojka_bot.reply_to(message, text="А чё тебе помогать, сам разберёшься", parse_mode='MarkdownV2')
