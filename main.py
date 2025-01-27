@@ -1,6 +1,5 @@
 from data import *
-from bank import *
-import telebot, os
+import telebot, os, pickle
 from telebot import types
 
 
@@ -20,15 +19,56 @@ print("predlojka.py in Предложка Империи succesfully started")
 
 
 
-def none_type(object):
+def none_type(object):           # функция, проверяющая на "нон" тип
 	return "" if object==None else f'{object}'
 
 
+#-------------------------------------------------------------------------------------------------------------------------------------------------------
+# bank.py
+
+
+
+
+def edit_currency_info(message, a, b):                  # изменяет в файле значения рублей и батов
+
+	currency_info=[]
+
+	currency_info.append(a)
+	currency_info.append(b)
+	
+	with open("currency_info.pickle", "wb") as file:
+		pickle.dump(currency_info, file)
+	
+	predlojka_bot.reply_to(message, "Данные изменены")
+
+
+def send_money(message):
+	
+	try:
+		amount=int(message.text)
+		
+		if user.balance >= amount:
+				user.balance-=amount
+				
+				user.balance2+=amount
+		elif user.balance < amount:
+				predlojka_bot.reply_to_message(message, "not enought")
+		else:
+				predlojka_bot.reply_to_message(message, "error")
+	except:
+		predlojka_bot.reply_to_message(message, "not amount")
+
+
+def bank_get_balance(message):
+	print()
+
+
+#-------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 @predlojka_bot.message_handler(commands=['start'])
 def start(message):
-	if f"{message.chat_id}.pickle" in os.listdir(path='./database'):
+	if f"{message.chat.id}.pickle" in os.listdir(path='./database'):
 
 		predlojka_bot.reply_to(message, text="Вы есть")
 
@@ -37,7 +77,44 @@ def start(message):
 
 
 
-@predlojka_bot.message_handler(commands=['bank'])
+
+
+
+
+
+@predlojka_bot.message_handler(commands=['edit_currency'])               #обработка команды для изменения курса валют
+def editing_currency(message):
+	if message.chat.id == admin:
+		predlojka_bot.reply_to(message, "Скинь циферки, баты и рубли через запятую")
+		predlojka_bot.register_next_step_handler(message, editing_currency2)
+	else:
+		predlojka_bot.reply_to(message, "Экономику не ломай")
+
+
+
+
+
+
+
+def editing_currency2(message): # функция - посредник, обрабатывает циферки
+	try:
+		purumpurum=message.text.split(",")
+
+		a=int(purumpurum[0])
+
+		b=int(purumpurum[1])
+
+		edit_currency_info(message, a, b)
+	except:
+		predlojka_bot.reply_to(message, "Не вышло")
+
+
+
+
+
+
+
+@predlojka_bot.message_handler(commands=['bank'])           # команда "входа" в банк
 def bank_meetings(message):    
     reply_button=types.ReplyKeyboardMarkup(row_width=2)
     btn1=types.KeyboardButton("💰Узнать баланс")
@@ -51,6 +128,12 @@ def bank_meetings(message):
 
     
     predlojka_bot.register_next_step_handler(message, what_do_you_want_from_bank)
+
+
+
+
+
+
 
 
 def what_do_you_want_from_bank(message):
@@ -70,6 +153,16 @@ def what_do_you_want_from_bank(message):
 @predlojka_bot.message_handler(commands=['help'])
 def help(message):
 	predlojka_bot.reply_to(message, text="А чё тебе помогать, сам разберёшься", parse_mode='MarkdownV2')
+
+
+
+
+
+
+
+
+
+
 
 @predlojka_bot.message_handler(content_types=['sticker', 'video', 'photo', 'text', 'document', 'audio', 'voice'])
 def accepter(message):
@@ -107,11 +200,21 @@ def accepter(message):
 			predlojka_bot.send_voice(admin, message.voice.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
 
 
+
+
+
+
+
+
+
 @predlojka_bot.callback_query_handler(func=lambda call: (call.data).startswith("+"))
 def sender(call):
 	predlojka_bot.copy_message(channel, admin, call.message.id)
 	predlojka_bot.delete_message(admin, call.message.id)
 	print("post was accepted")
+
+
+
 
 @predlojka_bot.callback_query_handler(func=lambda call: (call.data).startswith("&"))
 def st_sender(call):
@@ -120,9 +223,14 @@ def st_sender(call):
 	predlojka_bot.delete_message(admin, call.message.id)
 	print("sticker was accepted")
 
+
+
+
+
 @predlojka_bot.callback_query_handler(func=lambda call: (call.data).startswith("-"))
 def denier(call):
 	predlojka_bot.delete_message(admin, message_id=call.message.id)
 	print("post was rejected")
+
 
 predlojka_bot.infinity_polling()

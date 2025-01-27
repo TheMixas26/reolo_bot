@@ -1,5 +1,5 @@
 import pickle
-from main import *
+from main import predlojka_bot, user
 
 with open("rate.pickle", "rb") as file:
 	exchange_rate = pickle.load(file)
