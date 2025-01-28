@@ -42,6 +42,17 @@ def edit_currency_info(message, a, b):                  # изменяет в ф
 	predlojka_bot.reply_to(message, "Данные изменены")
 
 
+def view_currency_info():
+
+	with open("currency_info.pickle", "rb") as file:
+		currency_info = pickle.load(file)
+	
+
+	exchange_rate = currency_info[0] / currency_info[1]
+    
+    
+	return (f"{exchange_rate} Имперских батов равняются 1 рублю") # X bats equals 1 ruble
+
 def send_money(message):
 	
 	try:
@@ -136,17 +147,23 @@ def bank_meetings(message):
 
 
 
-def what_do_you_want_from_bank(message):
+def what_do_you_want_from_bank(message):        # команда, ожижающая callback from user
 	q=types.ReplyKeyboardRemove()
 	
-	if "баланс" in message.text.lower:
-		predlojka_bot.reply_to(message, f"Ваш баланс: {bank_get_balance(message)}")
-	elif "перев" in message.text.lower:
-		print("гггн")
-	elif "курс" in message.text.lower:
-		print("abaaa")
-	elif "штраф" in message.text.lower:
-		print("ййцуй")
+	if message.text == "💰Узнать баланс":
+		predlojka_bot.reply_to(message, f"Ваш баланс: {bank_get_balance(message)}", reply_markup=q)
+
+	elif message.text == "🔁Перевод":
+		print("перевод")
+
+	elif message.text == "📈Курс валюты":
+		predlojka_bot.reply_to(message, f"{view_currency_info()}", reply_markup=q)
+
+	elif message.text == "🚫Оплатить штрафы":
+		print("штраф detected")
+
+	else:
+		predlojka_bot.reply_to(message, "Боюсь, я так не умею...", reply_markup=q)
 	
 
 
