@@ -1,5 +1,5 @@
 from data import *
-import telebot, os, pickle
+import telebot, os, pickle, random, time
 from telebot import types
 from tinydb import TinyDB, Query
 
@@ -60,7 +60,7 @@ def get_money(message, amount):
 
 			total_amount=new_balance - (new_balance*commission)
 
-			db.update({"balance": new_balance}, Query().id == to_user_id)
+			db.update({"balance": total_amount}, Query().id == to_user_id)
 			db.update({"balance": new_sender_balance}, Query().id == message.from_user.id)
 
 			predlojka_bot.reply_to(message, "Перевод совершён!")
@@ -223,15 +223,167 @@ def what_do_you_want_from_bank(message):        # команда, ожижающ
 def help(message):
 	predlojka_bot.reply_to(message, text="А чё тебе помогать, сам разберёшься", parse_mode='MarkdownV2')
 
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+
+class Player:
+    def __init__(self, user_id, cls="warrior", race="human", hp=100, level=1):
+        self.user_id = user_id
+        self.cls = cls
+        self.race = race
+        self.hp = hp
+        self.level = level
+
+    def to_dict(self):
+        return {
+            'id': self.user_id,
+            'cls': self.cls,
+            'race': self.race,
+            'hp': self.hp,
+            'level': self.level
+        }
+
+    @staticmethod
+    def from_dict(data):
+        return Player(
+            user_id=data['id'],
+            cls=data.get('cls', 'warrior'),
+            race=data.get('race', 'human'),
+            hp=data.get('hp', 100),
+            level=data.get('level', 1)
+        )
+
+class Enemy:
+    def __init__(self, name, hp):
+        self.name = name
+        self.hp = hp
+
+
+# === Loot ===
+loot_table = {
+    "1": ["Зелье", "Малый меч"],
+    "2": ["Средний меч", "Щит"],
+    "3": ["Большой меч", "Артефакт"]
+}
+
+def get_loot(tier):
+    return random.choice(loot_table[str(tier)])
+
+
+# === Игроки ===
+def get_player(user_id):
+    result = db.search(Query().id == user_id)
+    if result:
+        return Player.from_dict(result[0])
+    else:
+        player = Player(user_id)
+        db.insert(player.to_dict())
+        return player
+
+def save_player(player):
+    db.upsert(player.to_dict(), Query().id == player.user_id)
+
+# === Генерация врага ===
+def generate_enemy(level):
+    hp = random.randint(30, 50) + level * 10
+    return Enemy("Гоблин", hp)
+
+@predlojka_bot.message_handler(commands=['battle'])
+def battle_command(message):
+	global active_enemies
+	active_enemies = {}
+
+	user_id = message.from_user.id
+	player = get_player(user_id)
+	enemy = generate_enemy(player.level)
+	active_enemies[user_id] = enemy
+		
+	markup = types.InlineKeyboardMarkup()
+	attack_btn = types.InlineKeyboardButton("Атаковать", callback_data="attack")
+	markup.add(attack_btn)
+
+	predlojka_bot.send_message(message.chat.id, f"⚔️ Битва началась!\nПротивник: {enemy.name}, HP: {enemy.hp}", reply_markup=markup)
 
 
 
+@predlojka_bot.callback_query_handler(func=lambda call: print(call.data) or call.data and call.data.startswith("a"))
+def handle_attack(call):
+	try:
+		print("entering callback handler")
+		user_id = call.from_user.id
+		player = get_player(user_id)
+		enemy = active_enemies.get(user_id)
 
+		if not enemy:
+			predlojka_bot.answer_callback_query(call.id, "Нет активной битвы.")
+			return
 
+		damage = random.randint(5, 10)
+		enemy.hp -= damage
+		result = f"Вы ударили {enemy.name} на {damage} урона. У него осталось {max(enemy.hp, 0)} HP.\n"
 
+		if enemy.hp <= 0:
+			result += f"Вы победили {enemy.name}! 🏆\n"
+			loot = get_loot(1)
+			result += f"Вы нашли: {loot}"
+			player.level += 1
+			player.hp = 100
+			save_player(player)
+			active_enemies.pop(user_id, None)
+			# predlojka_bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=result)
+			predlojka_bot.send_message(chat_id=call.message.chat.id, text=result)
+			return
 
+		edmg = random.randint(3, 8)
+		player.hp -= edmg
+		result += f"{enemy.name} ударил вас на {edmg}. У вас осталось {max(player.hp, 0)} HP."
 
+		if player.hp <= 0:
+			result += "\nВы проиграли... 💀"
+			player.hp = 100
+			active_enemies.pop(user_id, None)
+			save_player(player)
+			predlojka_bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=result)
+			return
 
+		# Если оба живы, обновляем сообщение и клавиатуру
+		markup = types.InlineKeyboardMarkup()
+		attack_btn = types.InlineKeyboardButton("Атаковать", callback_data="attack")
+		markup.add(attack_btn)
+		save_player(player)
+		predlojka_bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=result, reply_markup=markup)
+
+	except Exception as e:
+		print(f"Ошибка в handle_attack: {e}")
+
+# === Команды ===
+
+@predlojka_bot.message_handler(commands=['stats'])
+def show_stats(message):
+	user_id = message.from_user.id
+	player = get_player(user_id)
+	predlojka_bot.send_message(message.chat.id, f"Ваш класс: {player.cls}\nРаса: {player.race}\nHP: {player.hp}\nУровень: {player.level}")
+
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
+# ======================================================================================================================
 
 @predlojka_bot.message_handler(content_types=['sticker', 'video', 'photo', 'text', 'document', 'audio', 'voice'])
 def accepter(message):
@@ -278,8 +430,12 @@ def accepter(message):
 
 @predlojka_bot.callback_query_handler(func=lambda call: (call.data).startswith("+"))
 def sender(call):
+	balance = db.get(Query().id == call.message.from_user.id)['balance']
+	db.update({"balance": balance}, Query().id == call.message.from_user.id)
+
 	predlojka_bot.copy_message(channel, admin, call.message.id)
 	predlojka_bot.delete_message(admin, call.message.id)
+	
 	print("post was accepted")
 
 
@@ -287,9 +443,13 @@ def sender(call):
 
 @predlojka_bot.callback_query_handler(func=lambda call: (call.data).startswith("&"))
 def st_sender(call):
+	balance = db.get(Query().id == call.message.from_user.id)['balance']
+	db.update({"balance": balance}, Query().id == call.message.from_user.id)
+
 	predlojka_bot.copy_message(channel, admin, call.message.id)
 	predlojka_bot.send_message(channel, call.data[1:], disable_notification=True)
 	predlojka_bot.delete_message(admin, call.message.id)
+	
 	print("sticker was accepted")
 
 
@@ -302,4 +462,5 @@ def denier(call):
 	print("post was rejected")
 
 
-predlojka_bot.infinity_polling()
+# predlojka_bot.infinity_polling()
+predlojka_bot.polling(none_stop=True)
