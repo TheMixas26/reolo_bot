@@ -107,7 +107,7 @@ def bank_get_balance(message):
 	return db.get(Query().id == message.from_user.id)['balance']
 
 
-#-------------------------------------------------------------------------------------------------------------------------------------------------------
+#----------------------------------------------------------------КОМАНДЫ------------------------------------------------------------------
 
 
 @predlojka_bot.message_handler(commands=['start'])
@@ -119,6 +119,19 @@ def start(message):
 	else:
 		db.insert({'id': message.from_user.id, 'name': f'{message.from_user.first_name}', 'last_name': f'{message.from_user.last_name}', 'balance': 0})
 		predlojka_bot.reply_to(message, text="Добро пожаловать в Империю!")
+
+
+@predlojka_bot.message_handler(commands=['changelog'])
+def changelog(message):
+	print(message)
+	try:
+		with open('changelog.txt', mode='r', encoding='utf-8') as f:
+			predlojka_bot.send_document(message.chat.id, f, reply_to_message_id=message.message_id, caption=f"Вот моя история обновлений! Текущая версия - <b>{bot_version}</b>", parse_mode='HTML')
+	except Exception as e:
+		print(e)
+		predlojka_bot.reply_to(message, text="Не удалось загрузить Информацию о последнем обновлении. (X_X)\nТеперь меня снова закроют в подвале и больше никогда не запустят (≧ ﹏ ≦)")
+
+
 
 
 
@@ -198,7 +211,7 @@ def what_do_you_want_from_bank(message):        # команда, ожижающ
 
 
 	elif message.text == "❔Помощь":
-		predlojka_bot.reply_to(message, """
+		predlojka_bot.reply_to(message, r"""
 💳 *Функции банка*:  
 \- Проверка баланса 
 \- Переводы средств \(комиссия 2%\)  
@@ -221,7 +234,13 @@ def what_do_you_want_from_bank(message):        # команда, ожижающ
 
 @predlojka_bot.message_handler(commands=['help'])
 def help(message):
-	predlojka_bot.reply_to(message, text="А чё тебе помогать, сам разберёшься", parse_mode='MarkdownV2')
+	try:
+		with open('help_info.txt', mode='r', encoding='utf-8') as f:
+			help_string = f.read()
+		predlojka_bot.reply_to(message, text=help_string, parse_mode='HTML')
+	except Exception as e:
+		print(e)
+		predlojka_bot.reply_to(message, text="Не удалось загрузить справку. (X_X)\nТеперь меня снова закроют в подвале и больше никогда не запустят (≧ ﹏ ≦)")
 
 # ======================================================================================================================
 # ======================================================================================================================
@@ -387,38 +406,87 @@ def show_stats(message):
 
 @predlojka_bot.message_handler(content_types=['sticker', 'video', 'photo', 'text', 'document', 'audio', 'voice'])
 def accepter(message):
+
 	if message.chat.id != channel and message.chat.id != channel_red and message.chat.id != -1002228334833:
 		markup = types.InlineKeyboardMarkup()
-		user_name=f'\n\n👤 {message.from_user.first_name} {message.from_user.last_name if message.from_user.last_name != None else ""}'
-		predlojka_bot.send_message(message.chat.id, f"Спасибо за ваше сообщение, {user_name[4:]}!!!", reply_markup=q)
 
-		markup.add(types.InlineKeyboardButton("Одобрить", callback_data="+" + user_name))
-		markup.add(types.InlineKeyboardButton("Запретить", callback_data="-"))
-		print(f"Predlojka get new message! It is {message.content_type}")
-
+		adafa_think_text_content = None
 		if message.content_type == 'text':
-			predlojka_bot.send_message(admin, message.text + user_name, reply_markup=markup)
+			adafa_think_text_content = message.text
+		else:
+			adafa_think_text_content = message.caption or ""
 
-		elif message.content_type == 'sticker':
-			markup = types.InlineKeyboardMarkup()
-			markup.add(types.InlineKeyboardButton("Одобрить", callback_data="&" + user_name))
+		if '#анон' in adafa_think_text_content.lower():
+			user_name = '\n\n🤫 Аноним'
+		else:
+			user_name = user_name=f'\n\n👤 {message.from_user.first_name} {message.from_user.last_name if message.from_user.last_name != None else ""}'
+
+
+		
+		if '#вопрос' in adafa_think_text_content:
+			predlojka_bot.send_message(message.chat.id, f"Спасибо за ваш вопрос, {user_name[4:]}!!!", reply_markup=q)
+
+			markup.add(types.InlineKeyboardButton("Ответить", callback_data="+" + user_name + 'question'+'|'))
+			markup.add(types.InlineKeyboardButton("Игнор", callback_data="-"))
+			print(f"Predlojka get new message! It is {message.content_type}")
+
+			if message.content_type == 'text':
+				predlojka_bot.send_message(admin,f'Вам поступил новый вопрос от {user_name[4:]}\n\n<blockquote>{message.text}</blockquote>', reply_markup=markup, parse_mode='HTML')
+
+			elif message.content_type == 'sticker':
+				markup = types.InlineKeyboardMarkup()
+				markup.add(types.InlineKeyboardButton("Ответить", callback_data="&" + user_name + 'question'+'|'))
+				markup.add(types.InlineKeyboardButton("Игнор", callback_data="-"))
+				predlojka_bot.send_sticker(admin, message.sticker.file_id, reply_markup=markup)
+		
+			elif message.content_type == 'video':
+				predlojka_bot.send_video(admin, message.video.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+			
+			elif message.content_type == 'photo':
+				predlojka_bot.send_photo(admin, message.photo[0].file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+			
+			elif message.content_type == 'document':
+				predlojka_bot.send_document(admin, message.document.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+
+			elif message.content_type == 'audio':
+				predlojka_bot.send_audio(admin, message.audio.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+
+			elif message.content_type == 'voice':
+				predlojka_bot.send_voice(admin, message.voice.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+
+
+
+
+		else:                                       # WHEN SIMPLE POST, NO '#вопрос' TAG
+			predlojka_bot.send_message(message.chat.id, f"Спасибо за ваше сообщение, {user_name[4:]}!!!", reply_markup=q)
+
+			markup.add(types.InlineKeyboardButton("Одобрить", callback_data="+" + user_name))
 			markup.add(types.InlineKeyboardButton("Запретить", callback_data="-"))
-			predlojka_bot.send_sticker(admin, message.sticker.file_id, reply_markup=markup)
-	
-		elif message.content_type == 'video':
-			predlojka_bot.send_video(admin, message.video.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
-		
-		elif message.content_type == 'photo':
-			predlojka_bot.send_photo(admin, message.photo[0].file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
-		
-		elif message.content_type == 'document':
-			predlojka_bot.send_document(admin, message.document.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+			print(f"Predlojka get new message! It is {message.content_type}")
 
-		elif message.content_type == 'audio':
-			predlojka_bot.send_audio(admin, message.audio.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+			if message.content_type == 'text':
+				predlojka_bot.send_message(admin, message.text + user_name, reply_markup=markup)
 
-		elif message.content_type == 'voice':
-			predlojka_bot.send_voice(admin, message.voice.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+			elif message.content_type == 'sticker':
+				markup = types.InlineKeyboardMarkup()
+				markup.add(types.InlineKeyboardButton("Одобрить", callback_data="&" + user_name))
+				markup.add(types.InlineKeyboardButton("Запретить", callback_data="-"))
+				predlojka_bot.send_sticker(admin, message.sticker.file_id, reply_markup=markup)
+		
+			elif message.content_type == 'video':
+				predlojka_bot.send_video(admin, message.video.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+			
+			elif message.content_type == 'photo':
+				predlojka_bot.send_photo(admin, message.photo[0].file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+			
+			elif message.content_type == 'document':
+				predlojka_bot.send_document(admin, message.document.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+
+			elif message.content_type == 'audio':
+				predlojka_bot.send_audio(admin, message.audio.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
+
+			elif message.content_type == 'voice':
+				predlojka_bot.send_voice(admin, message.voice.file_id, reply_markup=markup, caption = none_type(message.caption) + user_name)
 
 
 
@@ -430,8 +498,8 @@ def accepter(message):
 
 @predlojka_bot.callback_query_handler(func=lambda call: (call.data).startswith("+"))
 def sender(call):
-	balance = db.get(Query().id == call.message.from_user.id)['balance']
-	db.update({"balance": balance}, Query().id == call.message.from_user.id)
+	# balance = db.get(Query().id == call.message.from_user.id)['balance']
+	# db.update({"balance": balance}, Query().id == call.message.from_user.id)
 
 	predlojka_bot.copy_message(channel, admin, call.message.id)
 	predlojka_bot.delete_message(admin, call.message.id)
@@ -443,16 +511,19 @@ def sender(call):
 
 @predlojka_bot.callback_query_handler(func=lambda call: (call.data).startswith("&"))
 def st_sender(call):
-	balance = db.get(Query().id == call.message.from_user.id)['balance']
-	db.update({"balance": balance}, Query().id == call.message.from_user.id)
+	# balance = db.get(Query().id == call.message.from_user.id)['balance']
+	# db.update({"balance": balance}, Query().id == call.message.from_user.id)
 
-	predlojka_bot.copy_message(channel, admin, call.message.id)
-	predlojka_bot.send_message(channel, call.data[1:], disable_notification=True)
-	predlojka_bot.delete_message(admin, call.message.id)
-	
-	print("sticker was accepted")
-
-
+	if 'question' not in call.data:
+		predlojka_bot.copy_message(channel, admin, call.message.id)
+		predlojka_bot.send_message(channel, call.data[1:], disable_notification=True)
+		predlojka_bot.delete_message(admin, call.message.id)
+		print("sticker was accepted")
+	else:
+		predlojka_bot.copy_message(channel, admin, call.message.id)
+		predlojka_bot.send_message(channel, call.data[1:], disable_notification=True)
+		predlojka_bot.delete_message(admin, call.message.id)
+		print("sticker-question was accepted")
 
 
 
