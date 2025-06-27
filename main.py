@@ -1,5 +1,12 @@
+from birthdays import send_daily_birthdays
 from data import predlojka_bot
-import handlers  # Важно: просто импорт, чтобы зарегистрировать все обработчики
+from apscheduler.schedulers.background import BackgroundScheduler
+import handlers
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(send_daily_birthdays, 'cron', hour=1, minute=0, misfire_grace_time=7200)
+scheduler.start() 
+
 
 print("predlojka.py in Предложка Империи succesfully started")
 

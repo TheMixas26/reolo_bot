@@ -1,9 +1,9 @@
-from data import predlojka_bot, db, admin, channel, channel_red, bot_version
+from data import predlojka_bot, db, admin, channel, channel_red, bot_version, chat_mishas_den
 from telebot import types
 from tinydb import Query
 from bank import edit_currency_info, view_currency_info, send_money, bank_get_balance
 from battle import generate_enemy, get_loot, get_player, save_player, attack
-import random
+from birthdays import add_birthday, add_birthday_by_username, format_birthdays_list, send_daily_birthdays
 
 q = types.ReplyKeyboardRemove()
 active_enemies = {}
@@ -191,6 +191,37 @@ def show_inventory(message):
         predlojka_bot.send_message(message.chat.id, f"🎒 Ваш инвентарь:\n{inv}")
     else:
         predlojka_bot.send_message(message.chat.id, "🎒 Ваш инвентарь пуст.")
+
+
+
+@predlojka_bot.message_handler(commands=['add_birthday_by_username'])
+def handle_add_birthday_by_username(message):
+    if message.from_user.id != admin:
+        return
+    try:
+        parts = message.text.split()
+        if len(parts) < 3:
+            predlojka_bot.reply_to(message, "Формат: /add_birthday_by_username username ДД.ММ")
+            return
+        username = parts[1].lstrip('@')
+        date_str = parts[2]
+        chat_id = chat_mishas_den
+        ok, name = add_birthday_by_username(username, date_str, chat_id)
+        if ok:
+            predlojka_bot.reply_to(message, f"День рождения для {name} добавлен!")
+        else:
+            predlojka_bot.reply_to(message, "Ошибка при добавлении. Проверьте username и дату.")
+    except Exception as e:
+        predlojka_bot.reply_to(message, f"Ошибка: {e}")
+
+@predlojka_bot.message_handler(commands=['send_daily'])
+def handle_send_daily(message):
+    if message.from_user.id != admin:
+        return
+    try:
+        send_daily_birthdays()
+    except Exception as e:
+        print(e)
 
 
 

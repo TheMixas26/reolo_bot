@@ -118,10 +118,10 @@ def save_player(player):
 
 # --- Генерация врага ---
 ENEMY_TYPES = [
-    {"name": "Гоблин", "hp": 40, "atk": 7, "defn": 2, "dodge": 0.05},
-    {"name": "Орк", "hp": 60, "atk": 10, "defn": 4, "dodge": 0.03},
-    {"name": "Скелет", "hp": 35, "atk": 8, "defn": 1, "dodge": 0.10},
-    {"name": "Дракон", "hp": 120, "atk": 18, "defn": 8, "dodge": 0.02}
+    {"name": "Гоблин", "hp": 40, "atk": 7, "defn": 1, "dodge": 0.05},
+    {"name": "Орк", "hp": 60, "atk": 10, "defn": 3, "dodge": 0.03},
+    {"name": "Скелет", "hp": 35, "atk": 8, "defn": 0, "dodge": 0.10},
+    {"name": "Дракон", "hp": 120, "atk": 18, "defn": 7, "dodge": 0.02}
 ]
 
 def generate_enemy(level):
