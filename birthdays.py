@@ -78,6 +78,7 @@ def days_until_birthday(day, month):
     try:
         bday = datetime(this_year, month, day).date()
     except ValueError:
+        
         # обработка некорректных дат
         return -1
     if bday < today:
@@ -103,6 +104,6 @@ def format_birthdays_list():
     result = []
     for b in bdays:
         days_left = days_until_birthday(b["day"], b["month"])
-        result.append(f'{b["name"]}: {days_left} {plural_days(days_left)}')
+        result.append(f'> {b["name"]}: {days_left} {plural_days(days_left)}')
     result.sort(key=lambda x: int(x.split(": ")[1].split(" ")[0]))
     return "Ежедневные уведомления о днях рождений подписчиков!\n\n" + "\n".join(result)
