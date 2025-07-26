@@ -15,12 +15,10 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(send_daily_birthdays, 'cron', hour=1, minute=0, misfire_grace_time=7200)
 scheduler.start() 
 
-
-print("predlojka.py in Предложка Империи succesfully started")
-
 if __name__ == "__main__":
     while True:
         try:
+            print("predlojka.py in Предложка Империи succesfully started")
             predlojka_bot.polling(none_stop=True)
         except Exception as e:
             logging.error("Ошибка в работе бота", exc_info=True)
