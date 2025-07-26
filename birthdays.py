@@ -1,4 +1,4 @@
-from data import db, predlojka_bot, chat_mishas_den
+from data import db, predlojka_bot, chat_mishas_den, admin
 from tinydb import Query
 from datetime import datetime, timedelta
 
@@ -12,6 +12,7 @@ def send_daily_birthdays():
     try:
         text = format_birthdays_list()
         predlojka_bot.send_message(chat_mishas_den, text)
+        predlojka_bot.send_message(admin, "Уведомление направлено!")
     except Exception as e:
         print(f"Ошибка при отправке дней рождений: {e}")
 

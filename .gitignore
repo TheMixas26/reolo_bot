@@ -1,3 +1,4 @@
 data.py
 /__pycache__
 database/db.json
+bot_errors.log
