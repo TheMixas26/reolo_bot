@@ -118,17 +118,25 @@ def refresh_user_names(chat_id):
 
 
 
-def format_birthdays_list():
+def format_birthdays_list(who_asking_flag=0):
     refresh_user_names(chat_mishas_den)
     bdays = get_all_birthdays()
     if not bdays:
         return "Список дней рождений пуст."
     result = []
+    
     for b in bdays:
         days_left = days_until_birthday(b["day"], b["month"])
-        result.append(f'> {b["name"]}: {days_left} {plural_days(days_left)}')
+        if days_left == 0:
+            result.append(f'> {b["name"]}: сегодня день рождения! 🎉')
+        else:
+            result.append(f'> {b["name"]}: {days_left} {plural_days(days_left)}')
+
     result.sort(key=lambda x: int(x.split(": ")[1].split(" ")[0]))
-    return "Ежедневные уведомления о днях рождений подписчиков!\n\n" + "\n".join(result)
+    if who_asking_flag == 0: return "Ежедневные уведомления о днях рождений подписчиков!\n\n" + "\n".join(result)
+    elif who_asking_flag == 1: 
+        result = result[:2]
+        return "Вот ближайшие дни рождения других пользователей!\n" + "\n".join(result)
 
 def send_personal_birthday_notifications():
     """
@@ -143,13 +151,16 @@ def send_personal_birthday_notifications():
         day = b.get("day")
         month = b.get("month")
         days_left = days_until_birthday(day, month)
+        subscribers_list = format_birthdays_list(who_asking_flag=1)
+
         if days_left == 0:
-            text = f"🎉 {name}, сегодня ваш день рождения! Поздравляю! 🎂"
+            first_text = f"🎉 {name}, сегодня ваш день рождения! Поздравляю! 🎂"
         elif days_left > 0:
-            text = f"Здравствуйте, {name}!\nДо вашего дня рождения осталось {days_left} {plural_days(days_left)}."
+            first_text = f"Здравствуйте, {name}!\nДо вашего дня рождения осталось {days_left} {plural_days(days_left)}."
         else:
             continue  # в теории, пропуск некоректных дат. В теории.
         try:
-            predlojka_bot.send_message(user_id, text)
+            fin_text = f"{first_text}\n\n{subscribers_list}"
+            predlojka_bot.send_message(user_id, fin_text)
         except Exception as e:
             print(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}")

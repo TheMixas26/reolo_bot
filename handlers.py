@@ -4,7 +4,9 @@ from tinydb import Query
 from bank import edit_currency_info, view_currency_info, send_money, bank_get_balance
 from battle import generate_enemy, get_loot, get_player, save_player, attack
 from birthdays import add_birthday, add_birthday_by_username, format_birthdays_list, send_daily_birthdays, send_personal_birthday_notifications
-from utils import thx_for_message
+from utils import thx_for_message, get_commads_for_set
+from ai_module import ask_ai, stream_ai
+import time
 
 q = types.ReplyKeyboardRemove()
 active_enemies = {}
@@ -119,6 +121,21 @@ def help(message):
             message,
             text="Не удалось загрузить справку. (X_X)\nТеперь меня снова закроют в подвале и больше никогда не запустят (≧ ﹏ ≦)"
         )
+
+@predlojka_bot.message_handler(commands=['setcmd'])
+def set_commands(message):
+    if message.from_user.id != admin:
+        return
+    
+    scope = types.BotCommandScopeChat(admin)
+
+    predlojka_bot.set_my_commands(get_commads_for_set('user'))
+    predlojka_bot.set_my_commands(
+        get_commads_for_set('admin'),
+        scope=scope
+    )
+
+    predlojka_bot.reply_to(message, "Команды обновлены!")
 
 # --- Битвы ---
 
@@ -303,6 +320,46 @@ def handle_personal_notifications(message):
 
 @predlojka_bot.message_handler(content_types=['sticker', 'video', 'photo', 'text', 'document', 'audio', 'voice'])
 def accepter(message):
+
+    if message.chat.id == chat_mishas_den:
+        if message.content_type == 'text' and '#ai' in message.text.lower():
+            msg = predlojka_bot.reply_to(message, "Думаю… (*￣3￣)╭")
+
+            text = message.text
+            chunks = stream_ai(text)
+
+            last_sent = ""
+            last_update = 0.0
+            delay = 0.4
+
+            full_text = ""
+            for chunk in chunks:
+                now = time.time()
+                full_text = chunk  # всегда обновляем полный текст
+                if chunk != last_sent and (now - last_update) >= delay:
+                    last_sent = chunk
+                    last_update = now
+                    try:
+                        predlojka_bot.edit_message_text(
+                            last_sent,
+                            chat_id=message.chat.id,
+                            message_id=msg.message_id
+                        )
+                    except Exception:
+                        pass
+
+            # После завершения генерации обязательно отправляем финальный текст,
+            # даже если он совпадает с последним отправленным
+            try:
+                if full_text != last_sent:
+                    predlojka_bot.edit_message_text(
+                        full_text,
+                        chat_id=message.chat.id,
+                        message_id=msg.message_id
+                    )
+            except Exception:
+                pass
+
     if message.chat.id not in (channel, channel_red, -1002228334833):
         markup = types.InlineKeyboardMarkup()
         adafa_think_text_content = message.text if message.content_type == 'text' else message.caption or ""

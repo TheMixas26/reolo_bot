@@ -1,4 +1,6 @@
 from random import choice
+from telebot import types
+from data import predlojka_bot
 
 def thx_for_message(user_name, mes_type):
     
@@ -30,3 +32,28 @@ def thx_for_message(user_name, mes_type):
 
     if mes_type == '!': return choice(variants_v)
     elif mes_type == '?': return choice(variants_q)
+
+
+def get_commads_for_set(who_ask):
+    default_commands = [
+        types.BotCommand("start", "Запустить бота"),
+        types.BotCommand("help", "Помощь"),
+        types.BotCommand("changelog", "Инфо об обновлении"),
+        types.BotCommand("bank", "Войти в банк"),
+        types.BotCommand("battle", "Запустить простейший бой"),
+        types.BotCommand("stats", "Узнать статы"),
+        types.BotCommand("personal_notifications", "вкл/выкл личные уведомления о дне рождения"),
+        types.BotCommand("add_birthday", "Добивить ваш день рождения в базу")
+    ]
+
+    admin_commands = [
+        types.BotCommand("send_daily", "Принудиткльно выслать ежедневки"),
+        types.BotCommand("send_personal_daily", "Принудительно выслать личные ежедневки"),
+        types.BotCommand("add_birthday_by_username", "Принудительно добавить ДР пользователю"),
+        types.BotCommand("setcmd", "Установить команды в меню"),
+        types.BotCommand("edit_currency", "Изменить курс валют")
+    ]
+
+    if who_ask == 'user': return default_commands
+    elif who_ask == 'admin': return default_commands + admin_commands
+    else: return default_commands
