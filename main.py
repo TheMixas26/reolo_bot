@@ -1,4 +1,4 @@
-from birthdays import send_daily_birthdays
+from birthdays import send_daily_birthdays, send_personal_birthday_notifications
 from data import predlojka_bot
 from apscheduler.schedulers.background import BackgroundScheduler
 import handlers
@@ -13,6 +13,7 @@ logging.basicConfig(
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(send_daily_birthdays, 'cron', hour=1, minute=0, misfire_grace_time=7200)
+scheduler.add_job(send_personal_birthday_notifications, 'cron', hour=1, minute=0, misfire_grace_time=7200)
 scheduler.start() 
 
 if __name__ == "__main__":

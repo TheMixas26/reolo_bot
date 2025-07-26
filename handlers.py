@@ -3,7 +3,7 @@ from telebot import types
 from tinydb import Query
 from bank import edit_currency_info, view_currency_info, send_money, bank_get_balance
 from battle import generate_enemy, get_loot, get_player, save_player, attack
-from birthdays import add_birthday, add_birthday_by_username, format_birthdays_list, send_daily_birthdays
+from birthdays import add_birthday, add_birthday_by_username, format_birthdays_list, send_daily_birthdays, send_personal_birthday_notifications
 from utils import thx_for_message
 
 q = types.ReplyKeyboardRemove()
@@ -256,6 +256,48 @@ def handle_send_daily(message):
         send_daily_birthdays()
     except Exception as e:
         print(e)
+
+@predlojka_bot.message_handler(commands=['send_personal_daily'])
+def handle_send_personal_daily(message):
+    if message.from_user.id != admin:
+        return
+    try:
+        send_personal_birthday_notifications()
+    except Exception as e:
+        print(e)
+
+@predlojka_bot.message_handler(commands=['add_birthday'])
+def handle_add_birthday(message):
+    try:
+        parts = message.text.split()
+        if len(parts) < 2:
+            predlojka_bot.reply_to(message, "Формат: /add_birthday ДД.ММ или /add_birthday ДД.ММ.ГГГГ")
+            return
+        date_str = parts[1]
+        user_id = message.from_user.id
+        name = f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip()
+        ok = add_birthday(user_id, name, date_str)
+        if ok:
+            predlojka_bot.reply_to(message, "Ваш день рождения успешно добавлен!")
+        else:
+            predlojka_bot.reply_to(message, "Ошибка при добавлении. Проверьте формат даты.")
+    except Exception as e:
+        predlojka_bot.reply_to(message, f"Ошибка: {e}")
+
+@predlojka_bot.message_handler(commands=['personal_notifications'])
+def handle_personal_notifications(message):
+    user_id = message.from_user.id
+    table = db.table("birthdays")
+    user = table.get(Query().user_id == user_id)
+    if user:
+        current = user.get("personal_notify", False)
+        table.update({"personal_notify": not current}, Query().user_id == user_id)
+        if not current:
+            predlojka_bot.reply_to(message, "Личные уведомления о дне рождения включены!")
+        else:
+            predlojka_bot.reply_to(message, "Личные уведомления о дне рождения отключены!")
+    else:
+        predlojka_bot.reply_to(message, "Сначала добавьте свой день рождения через /add_birthday.")
 
 # --- Приём сообщений ---
 

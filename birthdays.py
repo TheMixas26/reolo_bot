@@ -129,3 +129,27 @@ def format_birthdays_list():
         result.append(f'> {b["name"]}: {days_left} {plural_days(days_left)}')
     result.sort(key=lambda x: int(x.split(": ")[1].split(" ")[0]))
     return "Ежедневные уведомления о днях рождений подписчиков!\n\n" + "\n".join(result)
+
+def send_personal_birthday_notifications():
+    """
+    Отправляет каждому пользователю личное уведомление о его дне рождения.
+    """
+    bdays = get_all_birthdays()
+    for b in bdays:
+        if not b.get("personal_notify"):
+            continue
+        user_id = b.get("user_id")
+        name = b.get("name")
+        day = b.get("day")
+        month = b.get("month")
+        days_left = days_until_birthday(day, month)
+        if days_left == 0:
+            text = f"🎉 {name}, сегодня ваш день рождения! Поздравляю! 🎂"
+        elif days_left > 0:
+            text = f"Здравствуйте, {name}!\nДо вашего дня рождения осталось {days_left} {plural_days(days_left)}."
+        else:
+            continue  # в теории, пропуск некоректных дат. В теории.
+        try:
+            predlojka_bot.send_message(user_id, text)
+        except Exception as e:
+            print(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}")
