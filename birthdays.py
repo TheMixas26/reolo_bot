@@ -98,7 +98,28 @@ def plural_days(n):
     return "дней"
 
 
+def refresh_user_names(chat_id):
+    """
+    Обновляет имена всех пользователей в базе, если они изменились.
+    """
+    table = db.table(BIRTHDAY_TABLE)
+    users = table.all()
+    for user in users:
+        user_id = user.get("user_id")
+        try:
+            chat_member = predlojka_bot.get_chat_member(chat_id, user_id)
+            first_name = chat_member.user.first_name or ""
+            last_name = chat_member.user.last_name or ""
+            name = f"{first_name} {last_name}".strip()
+            if user.get("name") != name:
+                table.update({"name": name}, Query().user_id == user_id)
+        except Exception as e:
+            print(f"Не удалось обновить имя для user_id={user_id}: {e}")
+
+
+
 def format_birthdays_list():
+    refresh_user_names(chat_mishas_den)
     bdays = get_all_birthdays()
     if not bdays:
         return "Список дней рождений пуст."
