@@ -1,6 +1,7 @@
 from data import db, predlojka_bot, chat_mishas_den, admin
 from tinydb import Query
 from datetime import datetime, timedelta
+from random import randint
 
 BIRTHDAY_TABLE = "birthdays"
 
@@ -124,19 +125,24 @@ def format_birthdays_list(who_asking_flag=0):
     if not bdays:
         return "Список дней рождений пуст."
     result = []
-    
+
     for b in bdays:
         days_left = days_until_birthday(b["day"], b["month"])
         if days_left == 0:
-            result.append(f'> {b["name"]}: сегодня день рождения! 🎉')
+            result.append((0, f'> {b["name"]}: сегодня день рождения! 🎉'))
         else:
-            result.append(f'> {b["name"]}: {days_left} {plural_days(days_left)}')
+            result.append((days_left, f'> {b["name"]}: {days_left} {plural_days(days_left)}'))
 
-    result.sort(key=lambda x: int(x.split(": ")[1].split(" ")[0]))
-    if who_asking_flag == 0: return "Ежедневные уведомления о днях рождений подписчиков!\n\n" + "\n".join(result)
-    elif who_asking_flag == 1: 
-        result = result[:2]
-        return "Вот ближайшие дни рождения других пользователей!\n" + "\n".join(result)
+    if randint(1, 100) == 1:
+        result.append((999999, f'> Предложка Империи: 999 999 дней до выхода из подвала...'))
+
+    result.sort(key=lambda x: x[0])
+    lines = [x[1] for x in result]
+    if who_asking_flag == 0:
+        return "Ежедневные уведомления о днях рождений подписчиков!\n\n" + "\n".join(lines)
+    elif who_asking_flag == 1:
+        lines = lines[:3]
+        return "Вот ближайшие дни рождения других пользователей!\n" + "\n".join(lines)
 
 def send_personal_birthday_notifications():
     """

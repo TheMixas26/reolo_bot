@@ -7,9 +7,15 @@ from birthdays import add_birthday, add_birthday_by_username, format_birthdays_l
 from utils import thx_for_message, get_commads_for_set
 from ai_module import ask_ai, stream_ai
 import time
+import threading
 
 q = types.ReplyKeyboardRemove()
 active_enemies = {}
+media_groups_buffer = {}
+media_groups_timer = {}
+MEDIA_GROUP_TIMEOUT = 2.0
+album_moderation_messages = {}  # media_group_id -> [message_ids]
+album_media_cache = {}          # media_group_id -> media list
 
 def none_type(obj):
     return "" if obj is None else f'{obj}'
@@ -316,21 +322,39 @@ def handle_personal_notifications(message):
     else:
         predlojka_bot.reply_to(message, "Сначала добавьте свой день рождения через /add_birthday.")
 
+
+@predlojka_bot.message_handler(commands=['send_to_tatyana_smth'])
+def handle_send_personal_daily(message):
+
+    text_ls = "Здравствуйте, Татьяна! Кажется, у вас сегодня день рождения... Если конечно мои подвальные записи не врут)\n\nМы всей Империей вас поздравляем! +1000 соуиального рейтинга и бесчисленное вам уважение!\n\nСпасибо вам за все ваши посты в Предложке (то есть, отпрвленные мне), мне бесконечно приятно, что наш канал живёт благодаря таким пользователям, как вы! С праздником вас, Татьяна!"
+
+    text_ch = "Дорогие подписчкики! Сегодня случилось неверотяное!!! Сегодня день рождения у нашего дорогого подпчискика Татьяны!!!\n\nВы наверняка видели посты от Татьяны!)) Она очень преданный подписчик!\n\nДавайте дружно поздравим её в комментариях!!!\n\nС праздником, Татьяна!"
+
+    if message.from_user.id != admin:
+        return
+    try:
+        predlojka_bot.send_message(538339037, text_ls)
+        predlojka_bot.send_message(channel, text_ch)
+    except Exception as e:
+        print(e)
+
 # --- Приём сообщений ---
 
-@predlojka_bot.message_handler(content_types=['sticker', 'video', 'photo', 'text', 'document', 'audio', 'voice'])
+@predlojka_bot.message_handler(content_types=['sticker', 'text', 'document', 'audio', 'voice'])
 def accepter(message):
 
-    if message.chat.id == chat_mishas_den:
-        if message.content_type == 'text' and '#ai' in message.text.lower():
-            msg = predlojka_bot.reply_to(message, "Думаю… (*￣3￣)╭")
+    if message.content_type == 'text' and '#ai' in message.text.lower():
+        if message.chat.id == chat_mishas_den or message.chat.id not in (channel, channel_red, chat_mishas_den):
+            name = f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip()
+
+            msg = predlojka_bot.reply_to(message, "Думаю... (*￣3￣)╭")
 
             text = message.text
-            chunks = stream_ai(text)
+            chunks = stream_ai(text, name)
 
             last_sent = ""
             last_update = 0.0
-            delay = 0.4
+            delay = 0.3
 
             full_text = ""
             for chunk in chunks:
@@ -360,7 +384,7 @@ def accepter(message):
             except Exception:
                 pass
 
-    if message.chat.id not in (channel, channel_red, -1002228334833):
+    elif message.chat.id not in (channel, channel_red, -1002228334833):
         markup = types.InlineKeyboardMarkup()
         adafa_think_text_content = message.text if message.content_type == 'text' else message.caption or ""
         # Определяем имя пользователя
@@ -430,7 +454,27 @@ def accepter(message):
 
 # --- Кнопки модерации ---
 
-@predlojka_bot.callback_query_handler(func=lambda call: (call.data).startswith("+"))
+@predlojka_bot.callback_query_handler(func=lambda call: call.data.startswith("+album|"))
+def accept_album(call):
+    _, media_group_id, user_name = call.data.split("|", 2)
+    media_group_id = str(media_group_id)
+    message_ids = album_moderation_messages.pop(media_group_id, [])
+    media = album_media_cache.pop(media_group_id, None)
+    if media:
+        predlojka_bot.send_media_group(channel, media)
+        predlojka_bot.send_message(channel, f"👤 {user_name}")
+    for msg_id in message_ids:
+        try:
+            predlojka_bot.delete_message(admin, msg_id)
+        except Exception:
+            pass
+    try:
+        predlojka_bot.delete_message(admin, call.message.id)
+    except Exception:
+        pass
+    print("album was accepted")
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data.startswith("+") and not call.data.startswith("+album|"))
 def sender(call):
     predlojka_bot.copy_message(channel, admin, call.message.id)
     predlojka_bot.delete_message(admin, call.message.id)
@@ -453,3 +497,79 @@ def st_sender(call):
 def denier(call):
     predlojka_bot.delete_message(admin, message_id=call.message.id)
     print("post was rejected")
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data.startswith("+album|"))
+def accept_album(call):
+    _, media_group_id, user_name = call.data.split("|", 2)
+    media_group_id = str(media_group_id)
+    message_ids = album_moderation_messages.pop(media_group_id, [])
+    media = album_media_cache.pop(media_group_id, None)
+    if media:
+        predlojka_bot.send_media_group(channel, media)
+        predlojka_bot.send_message(channel, f"👤 {user_name}")
+
+    # Удаляем сообщения альбома из админ-чата
+    for msg_id in message_ids:
+        try:
+            predlojka_bot.delete_message(admin, msg_id)
+        except Exception:
+            pass
+    try:
+        predlojka_bot.delete_message(admin, call.message.id)
+    except Exception:
+        pass
+    print("album was accepted")
+
+# В process_media_group_for_moderation добавьте сохранение media для пересылки:
+def process_media_group_for_moderation(media_group_id):
+    items = media_groups_buffer.pop(media_group_id, [])
+    media_groups_timer.pop(media_group_id, None)
+    print(f"DEBUG: media_group_id={media_group_id}, items={items}")  # <-- добавь это
+    if not items:
+        return
+
+    user = items[0].from_user
+    user_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    captions = [msg.caption for msg in items if msg.caption]
+    caption_gr = "\n".join(captions) if captions else ""
+    author_caption = (caption_gr + "\n\n" if caption_gr else "") + f"👤 {user_name}"
+
+    media = []
+    for idx, msg in enumerate(items):
+        if msg.content_type == 'photo':
+            cap = author_caption if idx == 0 else (msg.caption or None)
+            media.append(types.InputMediaPhoto(msg.photo[-1].file_id, caption=cap))
+        elif msg.content_type == 'video':
+            cap = author_caption if idx == 0 else (msg.caption or None)
+            media.append(types.InputMediaVideo(msg.video.file_id, caption=cap))
+
+    if media:
+        sent_msgs = predlojka_bot.send_media_group(admin, media)
+        album_message_ids = [msg.message_id for msg in sent_msgs]
+        album_moderation_messages[media_group_id] = album_message_ids
+        album_media_cache[media_group_id] = media
+
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Одобрить альбом", callback_data=f"+album|{media_group_id}|{user_name}"))
+        markup.add(types.InlineKeyboardButton("Запретить альбом", callback_data=f"-album|{media_group_id}"))
+        predlojka_bot.send_message(
+            admin,
+            (caption_gr + "\n\n" if caption_gr else "") + f"👤 {user_name}",
+            reply_markup=markup
+        )
+
+@predlojka_bot.message_handler(content_types=['photo', 'video'])
+def media_group_handler(message):
+    media_group_id = getattr(message, 'media_group_id', None)
+    if media_group_id:
+        if media_group_id not in media_groups_buffer:
+            media_groups_buffer[media_group_id] = []
+        media_groups_buffer[media_group_id].append(message)
+
+        if media_group_id in media_groups_timer:
+            media_groups_timer[media_group_id].cancel()
+        timer = threading.Timer(MEDIA_GROUP_TIMEOUT, process_media_group_for_moderation, args=(media_group_id,))
+        media_groups_timer[media_group_id] = timer
+        timer.start()
+    else:
+        accepter(message)

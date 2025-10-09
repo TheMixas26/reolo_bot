@@ -1,6 +1,5 @@
 from random import choice
 from telebot import types
-from data import predlojka_bot
 
 def thx_for_message(user_name, mes_type):
     
@@ -18,7 +17,7 @@ def thx_for_message(user_name, mes_type):
     ]
 
     variants_q = [
-        f"Спасибо за ваш вопрос, {user_name[4:]}!!!",
+        f"Спасибо за ваш вопрос, {user_name}!!!",
         f"{user_name}, мне теперь тоже интересно, что ответит админ!",
         f"К ему такое любопытсво, {user_name}?) Впрочем, неважно, моё дело - передать вопрос!",
         f"{user_name}, вопрос зафиксирован! Теперь ждём мудрого ответа сверху :)",
@@ -27,7 +26,8 @@ def thx_for_message(user_name, mes_type):
         f"Записал ваш вопрос, {user_name}. Надеюсь, админ не будет злиться :)",
         f"Любопытство — двигатель прогресса, {user_name}. Вопрос ушёл в эфир!",
         f"{user_name}, а ведь вопрос-то серьёзный. Давайте спросим у админа!",
-        f"Ну всё, {user_name}, теперь админ обязан ответить! Интригааа..."
+        f"Ну всё, {user_name}, теперь админ обязан ответить! Интригааа...",
+        f"{user_name}, ты хоть про подвалы так не спроси... Отправил вопрос, ждём ответ!",
     ]
 
     if mes_type == '!': return choice(variants_v)
