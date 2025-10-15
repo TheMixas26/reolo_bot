@@ -17,6 +17,8 @@ scheduler.add_job(send_personal_birthday_notifications, 'cron', hour=1, minute=0
 scheduler.start() 
 
 if __name__ == "__main__":
+    with open('bot_errors.log', 'w') as f:
+      f.write("")
     while True:
         try:
             print("predlojka.py in Предложка Империи succesfully started")
