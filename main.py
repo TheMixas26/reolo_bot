@@ -4,6 +4,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import handlers
 import logging
 import time
+from weather import send_weather
 
 logging.basicConfig(
     filename='bot_errors.log',
@@ -13,7 +14,8 @@ logging.basicConfig(
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(send_daily_birthdays, 'cron', hour=1, minute=0, misfire_grace_time=7200)
-scheduler.add_job(send_personal_birthday_notifications, 'cron', hour=1, minute=0, misfire_grace_time=7200)
+scheduler.add_job(send_personal_birthday_notifications, 'cron', hour=1, minute=1, misfire_grace_time=7200)
+scheduler.add_job(send_weather, 'cron', hour=12, minute=0, misfire_grace_time=7200)
 scheduler.start() 
 
 if __name__ == "__main__":
