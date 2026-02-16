@@ -1,0 +1,12 @@
+yandex-ai-studio-sdk
+logging
+time
+threading
+telebot
+requests
+datetime
+asyncio
+re
+random
+apscheduler
+tinydb

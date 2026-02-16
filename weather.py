@@ -1,4 +1,4 @@
-from data import predlojka_bot, admin, chat_mishas_den, location
+from config import predlojka_bot, admin, chat_mishas_den, location
 import requests
 from datetime import datetime, timedelta
 import logging
@@ -44,7 +44,7 @@ def get_weather_forecast(start_hour=12, end_hour=20):
         end_hour (int): конечный час (по умолчанию 20)
     
     Returns:
-        list: список словарей с прогнозом по часам или False при ошибке
+        list: список словарей с прогнозом по часам или None при ошибке
     """
     try:
         # Получаем текущую дату
@@ -66,39 +66,54 @@ def get_weather_forecast(start_hour=12, end_hour=20):
         
         if 'hourly' not in data:
             logger.error("Некорректный ответ от API погоды")
-            return False
+            return None
         
         hourly_data = data['hourly']
-        times = hourly_data['time']
-        temperatures = hourly_data['temperature_2m']
-        weather_codes = hourly_data['weathercode']
-        wind_speeds = hourly_data['windspeed_10m']
+        times = hourly_data.get('time', [])
+        temperatures = hourly_data.get('temperature_2m', [])
+        weather_codes = hourly_data.get('weathercode', [])
+        wind_speeds = hourly_data.get('windspeed_10m', [])
+        
+        if not times:
+            logger.error("Нет данных о времени в ответе API")
+            return None
         
         # Фильтруем данные по нужным часам
         forecast = []
         for i, time_str in enumerate(times):
-            time_obj = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-            hour = time_obj.hour
-            
-            if start_hour <= hour <= end_hour:
-                forecast.append({
-                    'time': time_obj,
-                    'hour': hour,
-                    'temperature': temperatures[i],
-                    'weather_code': weather_codes[i],
-                    'wind_speed': wind_speeds[i] * 3.6,  # Переводим в км/ч
-                    'icon': WeatherService.get_weather_icon(weather_codes[i])
-                })
+            try:
+                # Пробуем разные форматы времени
+                if 'T' in time_str:
+                    time_obj = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+                else:
+                    time_obj = datetime.strptime(time_str, '%Y-%m-%d %H:%M')
+                
+                hour = time_obj.hour
+                
+                if start_hour <= hour <= end_hour:
+                    # Проверяем, что у нас есть данные для всех полей
+                    if i < len(temperatures) and i < len(weather_codes) and i < len(wind_speeds):
+                        forecast.append({
+                            'time': time_obj,
+                            'hour': hour,
+                            'temperature': temperatures[i],
+                            'weather_code': weather_codes[i],
+                            'wind_speed': wind_speeds[i],  # Оставляем в м/с для API open-meteo
+                            'icon': WeatherService.get_weather_icon(weather_codes[i])
+                        })
+            except Exception as e:
+                logger.warning(f"Ошибка обработки времени {time_str}: {e}")
+                continue
         
         logger.info(f"Получен прогноз на {len(forecast)} часов")
-        return forecast
+        return forecast if forecast else None
         
     except requests.exceptions.RequestException as e:
         logger.error(f"Ошибка подключения к API погоды: {e}")
-        return False
+        return None
     except Exception as e:
         logger.error(f"Неожиданная ошибка при запросе погоды: {e}")
-        return False
+        return None
 
 def format_weather_message(forecast_data):
     """
@@ -120,19 +135,20 @@ def format_weather_message(forecast_data):
     for forecast in forecast_data:
         hour = forecast['hour']
         temp = round(forecast['temperature'])
-        wind = round(forecast['wind_speed'], 1)
+        wind = round(forecast['wind_speed'], 1)  # В м/с
         icon = forecast['icon']
         
-        message += f"🕐 {hour:02d}:00 - {icon} {temp}°C | 💨 {wind} км/ч\n"
+        message += f"🕐 {hour:02d}:00 - {icon} {temp}°C | 💨 {wind} м/с\n"
     
     # Добавляем сводку по дню
     temps = [f['temperature'] for f in forecast_data]
-    max_temp = max(temps)
-    min_temp = min(temps)
-    avg_temp = round(sum(temps) / len(temps), 1)
-    
-    message += f"\n📊 Сводка за период {forecast_data[0]['hour']:02d}:00-{forecast_data[-1]['hour']:02d}:00:\n"
-    message += f"• Макс: {max_temp}°C | Мин: {min_temp}°C | Средн: {avg_temp}°C"
+    if temps:
+        max_temp = max(temps)
+        min_temp = min(temps)
+        avg_temp = round(sum(temps) / len(temps), 1)
+        
+        message += f"\n📊 Сводка за период {forecast_data[0]['hour']:02d}:00-{forecast_data[-1]['hour']:02d}:00:\n"
+        message += f"• Макс: {max_temp}°C | Мин: {min_temp}°C | Средн: {avg_temp}°C"
     
     return message
 
@@ -145,8 +161,9 @@ def send_weather():
         forecast = get_weather_forecast(start_hour=12, end_hour=20)
         
         if not forecast:
-            error_msg = "❌ Ошибка при получении прогноза погоды"
-            predlojka_bot.send_message(admin, error_msg)
+            error_msg = "❌ Ошибка при получении прогноза погоды. Проверьте подключение к интернету и корректность координат."
+            if admin:
+                predlojka_bot.send_message(admin, error_msg)
             logger.error("Не удалось получить данные прогноза")
             return
         
@@ -158,8 +175,9 @@ def send_weather():
         logger.info("Прогноз погоды успешно отправлен")
         
     except Exception as e:
-        error_msg = f"❌ Критическая ошибка при отправке погоды: {e}"
-        predlojka_bot.send_message(admin, error_msg)
+        error_msg = f"❌ Критическая ошибка при отправке погоды: {str(e)[:100]}"
+        if admin:
+            predlojka_bot.send_message(admin, error_msg)
         logger.error(f"Ошибка при отправке погоды: {e}")
 
 # Дополнительная функция для получения текущей погоды (если нужна)
@@ -176,23 +194,42 @@ def get_current_weather():
         response.raise_for_status()
         
         data = response.json()
-        current = data['current_weather']
+        current = data.get('current_weather', {})
+        
+        if not current:
+            return None
         
         return {
-            'temperature': current['temperature'],
-            'wind_speed': current['windspeed'] * 3.6,
-            'weather_code': current['weathercode'],
-            'icon': WeatherService.get_weather_icon(current['weathercode'])
+            'temperature': current.get('temperature', 0),
+            'wind_speed': current.get('windspeed', 0),
+            'weather_code': current.get('weathercode', 0),
+            'icon': WeatherService.get_weather_icon(current.get('weathercode', 0))
         }
         
     except Exception as e:
         logger.error(f"Ошибка получения текущей погоды: {e}")
-        return False
+        return None
 
 if __name__ == "__main__":
     # Тестирование функции
+    print("Тестирование прогноза погоды...")
+    print(f"Используемые координаты: {location}")
+    
     test_forecast = get_weather_forecast(12, 20)
     if test_forecast:
+        print("Прогноз получен успешно:")
         print(format_weather_message(test_forecast))
+        
+        # Тестируем текущую погоду
+        print("\nТестирование текущей погоды...")
+        current = get_current_weather()
+        if current:
+            print(f"Текущая погода: {current['temperature']}°C, ветер {current['wind_speed']} м/с {current['icon']}")
     else:
-        print("Ошибка тестирования")
+        print("Ошибка: не удалось получить прогноз")
+        
+        # Проверяем текущую погоду как fallback
+        print("\nПробуем получить текущую погоду...")
+        current = get_current_weather()
+        if current:
+            print(f"Текущая погода: {current['temperature']}°C, ветер {current['wind_speed']} м/с {current['icon']}")

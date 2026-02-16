@@ -1,5 +1,5 @@
 import pickle
-from data import predlojka_bot, db, commission
+from config import predlojka_bot, db, commission
 from tinydb import Query
 
 

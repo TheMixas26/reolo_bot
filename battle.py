@@ -1,5 +1,5 @@
 import random
-from data import db
+from config import db
 from tinydb import Query
 
 # --- Классы и расы ---

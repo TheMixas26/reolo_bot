@@ -1,4 +1,4 @@
-from data import db, predlojka_bot, chat_mishas_den, admin
+from config import db, predlojka_bot, chat_mishas_den, admin
 from tinydb import Query
 from datetime import datetime, timedelta
 from random import randint
