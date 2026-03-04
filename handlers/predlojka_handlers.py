@@ -5,6 +5,8 @@ from ai_module import ask_ai, stream_ai
 import time
 import threading
 import logging
+from datetime import datetime
+from tinydb import Query
 
 # Настройка логирования для отладки
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,6 +18,106 @@ media_groups_timer = {}
 MEDIA_GROUP_TIMEOUT = 2.0
 album_moderation_messages = {}  # media_group_id -> [message_ids]
 album_media_cache = {}          # media_group_id -> media list
+moderation_payload_cache = {}   # admin_message_id -> payload for draft/schedule
+schedule_context = {}           # admin_id -> pending scheduling context
+scheduled_posts_table = db.table("scheduled_posts")
+
+
+def build_moderation_markup(approve_data):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("Одобрить", callback_data=approve_data))
+    markup.add(types.InlineKeyboardButton("Запретить", callback_data="-"))
+    markup.add(types.InlineKeyboardButton("В черновик", callback_data="draft"))
+    markup.add(types.InlineKeyboardButton("Запланировать", callback_data="schedule"))
+    return markup
+
+
+def save_moderation_payload(admin_message_id, original_message, content_type, payload):
+    text_content = original_message.text if original_message.content_type == 'text' else original_message.caption or ""
+    text_lower = text_content.lower()
+    moderation_payload_cache[admin_message_id] = {
+        "content_type": content_type,
+        "payload": payload,
+        "source_user_id": original_message.from_user.id,
+        "is_question": '#вопрос' in text_lower,
+        "is_anon": '#анон' in text_lower,
+    }
+
+
+def serialize_album_media(media_list):
+    payload = []
+    for media in media_list:
+        media_type = 'photo' if isinstance(media, types.InputMediaPhoto) else 'video'
+        payload.append({
+            "type": media_type,
+            "file_id": media.media,
+            "caption": media.caption
+        })
+    return payload
+
+
+def publish_payload(content_type, payload):
+    if content_type == 'text':
+        predlojka_bot.send_message(channel, payload['text'], parse_mode=payload.get('parse_mode'))
+    elif content_type == 'sticker':
+        predlojka_bot.send_sticker(channel, payload['file_id'])
+        if payload.get('user_name_text'):
+            predlojka_bot.send_message(channel, payload['user_name_text'], disable_notification=True)
+    elif content_type == 'video':
+        predlojka_bot.send_video(channel, payload['file_id'], caption=payload.get('caption'))
+    elif content_type == 'photo':
+        predlojka_bot.send_photo(channel, payload['file_id'], caption=payload.get('caption'))
+    elif content_type == 'document':
+        predlojka_bot.send_document(channel, payload['file_id'], caption=payload.get('caption'))
+    elif content_type == 'audio':
+        predlojka_bot.send_audio(channel, payload['file_id'], caption=payload.get('caption'))
+    elif content_type == 'voice':
+        predlojka_bot.send_voice(channel, payload['file_id'], caption=payload.get('caption'))
+    elif content_type == 'album':
+        media = []
+        for item in payload:
+            if item['type'] == 'photo':
+                media.append(types.InputMediaPhoto(item['file_id'], caption=item.get('caption')))
+            else:
+                media.append(types.InputMediaVideo(item['file_id'], caption=item.get('caption')))
+        safe_send_media_group(channel, media)
+    else:
+        raise ValueError(f"Неподдерживаемый тип контента: {content_type}")
+
+
+def publish_due_scheduled_posts():
+    now = datetime.now()
+    status_query = Query()
+    records = scheduled_posts_table.search(status_query.status == 'scheduled')
+    for record in records:
+        publish_at = record.get('publish_at')
+        if not publish_at:
+            continue
+        try:
+            scheduled_time = datetime.fromisoformat(publish_at)
+        except Exception:
+            logger.error(f"Некорректный publish_at в scheduled_posts: {publish_at}")
+            continue
+        if scheduled_time <= now:
+            try:
+                publish_payload(record['content_type'], record['payload'])
+                scheduled_posts_table.remove(doc_ids=[record.doc_id])
+                logger.info(f"Опубликован запланированный пост doc_id={record.doc_id}")
+            except Exception as e:
+                logger.error(f"Ошибка публикации запланированного поста doc_id={record.doc_id}: {e}")
+
+
+def save_post_to_scheduled(content_type, payload, source_user_id, is_question, is_anon, publish_at=None, status='draft'):
+    scheduled_posts_table.insert({
+        "payload": payload,
+        "content_type": content_type,
+        "publish_at": publish_at,
+        "is_question": is_question,
+        "is_anon": is_anon,
+        "source_user_id": source_user_id,
+        "status": status,
+        "created_at": datetime.now().isoformat(timespec='seconds')
+    })
 
 def none_type(obj):
     return "" if obj is None else f'{obj}'
@@ -98,7 +200,6 @@ def accepter(message):
                     loop.close()
 
         elif message.chat.id not in (channel, channel_red, -1002228334833):
-            markup = types.InlineKeyboardMarkup()
             adafa_think_text_content = message.text if message.content_type == 'text' else message.caption or ""
             # Определяем имя пользователя
             if '#анон' in adafa_think_text_content.lower():
@@ -113,57 +214,72 @@ def accepter(message):
                     thx_for_message(user_name[4:], mes_type="?"),
                     reply_markup=q
                 )
-                markup.add(types.InlineKeyboardButton("Ответить", callback_data="+" + user_name + 'question' + '|'))
-                markup.add(types.InlineKeyboardButton("Игнор", callback_data="-"))
+                markup = build_moderation_markup("+" + user_name + 'question' + '|')
                 logger.info(f"Predlojka get new question! It is {message.content_type}")
                 if message.content_type == 'text':
-                    predlojka_bot.send_message(
+                    sent = predlojka_bot.send_message(
                         admin,
                         f'Вам поступил новый вопрос от {user_name[4:]}\n\n<blockquote>{message.text}</blockquote>',
                         reply_markup=markup,
                         parse_mode='HTML'
                     )
+                    save_moderation_payload(sent.message_id, message, 'text', {
+                        "text": f'Вам поступил новый вопрос от {user_name[4:]}\n\n<blockquote>{message.text}</blockquote>',
+                        "parse_mode": 'HTML'
+                    })
                 elif message.content_type == 'sticker':
-                    markup = types.InlineKeyboardMarkup()
-                    markup.add(types.InlineKeyboardButton("Ответить", callback_data="&" + user_name + 'question' + '|'))
-                    markup.add(types.InlineKeyboardButton("Игнор", callback_data="-"))
-                    predlojka_bot.send_sticker(admin, message.sticker.file_id, reply_markup=markup)
+                    sent = predlojka_bot.send_sticker(admin, message.sticker.file_id, reply_markup=build_moderation_markup("&" + user_name + 'question' + '|'))
+                    save_moderation_payload(sent.message_id, message, 'sticker', {
+                        "file_id": message.sticker.file_id,
+                        "user_name_text": user_name
+                    })
                 elif message.content_type == 'video':
-                    predlojka_bot.send_video(admin, message.video.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_video(admin, message.video.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'video', {"file_id": message.video.file_id, "caption": none_type(message.caption) + user_name})
                 elif message.content_type == 'photo':
-                    predlojka_bot.send_photo(admin, message.photo[0].file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_photo(admin, message.photo[0].file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'photo', {"file_id": message.photo[0].file_id, "caption": none_type(message.caption) + user_name})
                 elif message.content_type == 'document':
-                    predlojka_bot.send_document(admin, message.document.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_document(admin, message.document.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'document', {"file_id": message.document.file_id, "caption": none_type(message.caption) + user_name})
                 elif message.content_type == 'audio':
-                    predlojka_bot.send_audio(admin, message.audio.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_audio(admin, message.audio.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'audio', {"file_id": message.audio.file_id, "caption": none_type(message.caption) + user_name})
                 elif message.content_type == 'voice':
-                    predlojka_bot.send_voice(admin, message.voice.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_voice(admin, message.voice.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'voice', {"file_id": message.voice.file_id, "caption": none_type(message.caption) + user_name})
             else:
                 predlojka_bot.send_message(
                     message.chat.id,
                     thx_for_message(user_name[4:], mes_type="!"),
                     reply_markup=q
                 )
-                markup.add(types.InlineKeyboardButton("Одобрить", callback_data="+" + user_name))
-                markup.add(types.InlineKeyboardButton("Запретить", callback_data="-"))
+                markup = build_moderation_markup("+" + user_name)
                 logger.info(f"Predlojka get new message! It is {message.content_type}")
                 if message.content_type == 'text':
-                    predlojka_bot.send_message(admin, message.text + user_name, reply_markup=markup)
+                    sent = predlojka_bot.send_message(admin, message.text + user_name, reply_markup=markup)
+                    save_moderation_payload(sent.message_id, message, 'text', {"text": message.text + user_name})
                 elif message.content_type == 'sticker':
-                    markup = types.InlineKeyboardMarkup()
-                    markup.add(types.InlineKeyboardButton("Одобрить", callback_data="&" + user_name))
-                    markup.add(types.InlineKeyboardButton("Запретить", callback_data="-"))
-                    predlojka_bot.send_sticker(admin, message.sticker.file_id, reply_markup=markup)
+                    sent = predlojka_bot.send_sticker(admin, message.sticker.file_id, reply_markup=build_moderation_markup("&" + user_name))
+                    save_moderation_payload(sent.message_id, message, 'sticker', {
+                        "file_id": message.sticker.file_id,
+                        "user_name_text": user_name
+                    })
                 elif message.content_type == 'video':
-                    predlojka_bot.send_video(admin, message.video.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_video(admin, message.video.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'video', {"file_id": message.video.file_id, "caption": none_type(message.caption) + user_name})
                 elif message.content_type == 'photo':
-                    predlojka_bot.send_photo(admin, message.photo[0].file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_photo(admin, message.photo[0].file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'photo', {"file_id": message.photo[0].file_id, "caption": none_type(message.caption) + user_name})
                 elif message.content_type == 'document':
-                    predlojka_bot.send_document(admin, message.document.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_document(admin, message.document.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'document', {"file_id": message.document.file_id, "caption": none_type(message.caption) + user_name})
                 elif message.content_type == 'audio':
-                    predlojka_bot.send_audio(admin, message.audio.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_audio(admin, message.audio.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'audio', {"file_id": message.audio.file_id, "caption": none_type(message.caption) + user_name})
                 elif message.content_type == 'voice':
-                    predlojka_bot.send_voice(admin, message.voice.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    sent = predlojka_bot.send_voice(admin, message.voice.file_id, reply_markup=markup, caption=none_type(message.caption) + user_name)
+                    save_moderation_payload(sent.message_id, message, 'voice', {"file_id": message.voice.file_id, "caption": none_type(message.caption) + user_name})
 
 
 @predlojka_bot.callback_query_handler(func=lambda call: call.data.startswith("+album|"))
@@ -183,6 +299,7 @@ def accept_album(call):
         predlojka_bot.answer_callback_query(call.id, "Отправляем альбом в канал...")
         
         message_ids = album_moderation_messages.pop(media_group_id, [])
+        moderation_payload_cache.pop(f"album:{media_group_id}", None)
         media = album_media_cache.pop(media_group_id, None)
         
         if not media:
@@ -254,6 +371,7 @@ def reject_album(call):
         media_group_id = str(media_group_id)
         
         message_ids = album_moderation_messages.pop(media_group_id, [])
+        moderation_payload_cache.pop(f"album:{media_group_id}", None)
         album_media_cache.pop(media_group_id, None)
         
         deleted_count = 0
@@ -281,6 +399,7 @@ def reject_album(call):
 def sender(call):
     try:
         predlojka_bot.copy_message(channel, admin, call.message.id)
+        moderation_payload_cache.pop(call.message.id, None)
         predlojka_bot.delete_message(admin, call.message.id)
         predlojka_bot.answer_callback_query(call.id, "Сообщение опубликовано")
         logger.info("post was accepted")
@@ -294,12 +413,14 @@ def st_sender(call):
         if 'question' not in call.data:
             predlojka_bot.copy_message(channel, admin, call.message.id)
             predlojka_bot.send_message(channel, call.data[1:], disable_notification=True)
+            moderation_payload_cache.pop(call.message.id, None)
             predlojka_bot.delete_message(admin, call.message.id)
             predlojka_bot.answer_callback_query(call.id, "Стикер опубликован")
             logger.info("sticker was accepted")
         else:
             predlojka_bot.copy_message(channel, admin, call.message.id)
             predlojka_bot.send_message(channel, call.data[1:], disable_notification=True)
+            moderation_payload_cache.pop(call.message.id, None)
             predlojka_bot.delete_message(admin, call.message.id)
             predlojka_bot.answer_callback_query(call.id, "Вопрос-стикер опубликован")
             logger.info("sticker-question was accepted")
@@ -307,9 +428,132 @@ def st_sender(call):
         logger.error(f"Ошибка в st_sender: {e}")
         predlojka_bot.answer_callback_query(call.id, "Ошибка при публикации стикера")
 
+
+
+def parse_schedule_datetime(value):
+    for fmt in ("%d.%m.%Y %H:%M", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(value.strip(), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def finalize_schedule_from_context(message):
+    context = schedule_context.get(message.from_user.id)
+    if not context:
+        predlojka_bot.reply_to(message, "Нет выбранного поста для планирования.")
+        return
+
+    dt = parse_schedule_datetime(message.text or "")
+    if not dt:
+        sent = predlojka_bot.reply_to(message, "Неверный формат. Используй ДД.ММ.ГГГГ ЧЧ:ММ")
+        predlojka_bot.register_next_step_handler(sent, finalize_schedule_from_context)
+        return
+
+    record = context['record']
+    save_post_to_scheduled(
+        content_type=record['content_type'],
+        payload=record['payload'],
+        source_user_id=record['source_user_id'],
+        is_question=record['is_question'],
+        is_anon=record['is_anon'],
+        publish_at=dt.isoformat(timespec='minutes'),
+        status='scheduled'
+    )
+
+    if context.get('message_id'):
+        moderation_payload_cache.pop(context['message_id'], None)
+        safe_delete_message(admin, context['message_id'])
+    if context.get('album_key'):
+        album_key = context['album_key'].split(':', 1)[1]
+        moderation_payload_cache.pop(context['album_key'], None)
+        album_media_cache.pop(album_key, None)
+        album_moderation_messages.pop(album_key, None)
+
+    schedule_context.pop(message.from_user.id, None)
+    predlojka_bot.reply_to(message, f"Пост запланирован на {dt.strftime('%d.%m.%Y %H:%M')}")
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data == "draft")
+def save_to_draft(call):
+    record = moderation_payload_cache.pop(call.message.id, None)
+    if not record:
+        predlojka_bot.answer_callback_query(call.id, "Не найден payload поста")
+        return
+
+    save_post_to_scheduled(
+        content_type=record['content_type'],
+        payload=record['payload'],
+        source_user_id=record['source_user_id'],
+        is_question=record['is_question'],
+        is_anon=record['is_anon'],
+        status='draft'
+    )
+    safe_delete_message(admin, call.message.id)
+    predlojka_bot.answer_callback_query(call.id, "Сохранено в черновик")
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data == "schedule")
+def schedule_post(call):
+    record = moderation_payload_cache.get(call.message.id)
+    if not record:
+        predlojka_bot.answer_callback_query(call.id, "Не найден payload поста")
+        return
+
+    schedule_context[call.from_user.id] = {
+        'record': record,
+        'message_id': call.message.id
+    }
+    predlojka_bot.answer_callback_query(call.id, "Введите дату и время")
+    sent = predlojka_bot.send_message(call.from_user.id, "Когда публикуем? Формат: ДД.ММ.ГГГГ ЧЧ:ММ")
+    predlojka_bot.register_next_step_handler(sent, finalize_schedule_from_context)
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data.startswith("draft_album|"))
+def draft_album(call):
+    media_group_id = call.data.split("|", 1)[1]
+    key = f"album:{media_group_id}"
+    record = moderation_payload_cache.pop(key, None)
+    if not record:
+        predlojka_bot.answer_callback_query(call.id, "Альбом не найден")
+        return
+
+    save_post_to_scheduled(
+        content_type='album',
+        payload=record['payload'],
+        source_user_id=record['source_user_id'],
+        is_question=record['is_question'],
+        is_anon=record['is_anon'],
+        status='draft'
+    )
+    album_media_cache.pop(media_group_id, None)
+    album_moderation_messages.pop(media_group_id, None)
+    safe_delete_message(admin, call.message.id)
+    predlojka_bot.answer_callback_query(call.id, "Альбом сохранён в черновик")
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data.startswith("schedule_album|"))
+def schedule_album(call):
+    media_group_id = call.data.split("|", 1)[1]
+    key = f"album:{media_group_id}"
+    record = moderation_payload_cache.get(key)
+    if not record:
+        predlojka_bot.answer_callback_query(call.id, "Альбом не найден")
+        return
+
+    schedule_context[call.from_user.id] = {
+        'record': record,
+        'album_key': key
+    }
+    predlojka_bot.answer_callback_query(call.id, "Введите дату и время")
+    sent = predlojka_bot.send_message(call.from_user.id, "Когда публикуем альбом? Формат: ДД.ММ.ГГГГ ЧЧ:ММ")
+    predlojka_bot.register_next_step_handler(sent, finalize_schedule_from_context)
+
 @predlojka_bot.callback_query_handler(func=lambda call: call.data == "-")
 def denier(call):
     try:
+        moderation_payload_cache.pop(call.message.id, None)
         predlojka_bot.delete_message(admin, message_id=call.message.id)
         predlojka_bot.answer_callback_query(call.id, "Сообщение отклонено")
         logger.info("post was rejected")
@@ -361,6 +605,8 @@ def process_media_group_for_moderation(media_group_id):
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton("Одобрить альбом", callback_data=f"+album|{media_group_id}|{user_name}"))
             markup.add(types.InlineKeyboardButton("Запретить альбом", callback_data=f"-album|{media_group_id}"))
+            markup.add(types.InlineKeyboardButton("В черновик", callback_data=f"draft_album|{media_group_id}"))
+            markup.add(types.InlineKeyboardButton("Запланировать", callback_data=f"schedule_album|{media_group_id}"))
             
             try:
                 caption_text = (caption_gr + "\n\n" if caption_gr else "") + f"👤 {user_name}"
@@ -369,6 +615,14 @@ def process_media_group_for_moderation(media_group_id):
                     f"📸 Альбом из {len(media)} медиа\n\n{caption_text}",
                     reply_markup=markup
                 )
+                text_lower = caption_gr.lower()
+                moderation_payload_cache[f"album:{media_group_id}"] = {
+                    "content_type": "album",
+                    "payload": serialize_album_media(media),
+                    "source_user_id": user.id,
+                    "is_question": '#вопрос' in text_lower,
+                    "is_anon": '#анон' in text_lower
+                }
                 logger.info("Сообщение с кнопками модерации отправлено")
                 
             except Exception as e:
