@@ -1,15 +1,16 @@
-from birthdays import send_daily_birthdays, send_personal_birthday_notifications
+from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications
 from apscheduler.schedulers.background import BackgroundScheduler
 from handlers import user_handlers, admin_handlers, misc_handlers, predlojka_handlers, bank_handlers, rpg_handlers
 import logging
 from threading import Thread
 import time
-from weather import send_weather
-from utils import backupBD
+from utils.weather import send_weather
+from utils.utils import backupBD
 try:
-    from config import predlojka_bot, admin, bank_bot, rpg_bot
+    from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE
 except Exception as e:
     print("[CORE] - не получилось импортировать настройки. Файл config.py существует?")
+    exit(1)
 
 # Настройка логирования
 logging.basicConfig(
@@ -63,15 +64,19 @@ if __name__ == "__main__":
     t1.start()
     threads.append(t1)
     
-    # Банк
-    t2 = Thread(target=run_bot, args=(bank_bot, "Банк"), daemon=True)
-    t2.start()
-    threads.append(t2)
-    
-    # RPG
-    t3 = Thread(target=run_bot, args=(rpg_bot, "RPG"), daemon=True)
-    t3.start()
-    threads.append(t3)
+    if DEBUG_MODE:
+        pass
+
+    else:
+        # Банк
+        t2 = Thread(target=run_bot, args=(bank_bot, "Банк"), daemon=True)
+        t2.start()
+        threads.append(t2)
+        
+        # RPG
+        t3 = Thread(target=run_bot, args=(rpg_bot, "RPG"), daemon=True)
+        t3.start()
+        threads.append(t3)
     
     logger.info("✅ Все боты запущены. Ожидание сообщений...")
     

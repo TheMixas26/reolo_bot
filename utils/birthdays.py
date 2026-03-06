@@ -1,5 +1,9 @@
-from config import db, predlojka_bot, chat_mishas_den, admin
-from tinydb import Query
+from config import predlojka_bot, chat_mishas_den, admin
+from database.sqlite_db import (
+    upsert_birthday,
+    get_all_birthdays as fetch_all_birthdays,
+    update_birthday_name,
+)
 from datetime import datetime, timedelta
 from random import randint
 
@@ -34,13 +38,7 @@ def add_birthday(user_id, name, date_str):
         else:
             bday = datetime.strptime(date_str, "%d.%m.%Y")
             year = bday.year
-        db.table(BIRTHDAY_TABLE).upsert({
-            "user_id": user_id,
-            "name": name,
-            "day": bday.day,
-            "month": bday.month,
-            "year": year
-        }, Query().user_id == user_id)
+        upsert_birthday(user_id=user_id, name=name, day=bday.day, month=bday.month, year=year)
         return True
     except Exception as e:
         print(f"Ошибка при добавлении дня рождения: {e}")
@@ -58,21 +56,21 @@ def add_birthday_by_username(username, date_str, chat_id):
         else:
             bday = datetime.strptime(date_str, "%d.%m.%Y")
             year = bday.year
-        db.table(BIRTHDAY_TABLE).upsert({
-            "user_id": user.user.id,
-            "name": name,
-            "username": username,
-            "day": bday.day,
-            "month": bday.month,
-            "year": year
-        }, Query().user_id == user.user.id)
+        upsert_birthday(
+            user_id=user.user.id,
+            name=name,
+            username=username,
+            day=bday.day,
+            month=bday.month,
+            year=year,
+        )
         return True, name
     except Exception as e:
         print(f"Ошибка при добавлении дня рождения: {e}")
         return False, None
 
 def get_all_birthdays():
-    return db.table(BIRTHDAY_TABLE).all()
+    return fetch_all_birthdays()
 
 def days_until_birthday(day, month):
     today = datetime.now().date()  # только дата, без времени
@@ -103,8 +101,7 @@ def refresh_user_names(chat_id):
     """
     Обновляет имена всех пользователей в базе, если они изменились.
     """
-    table = db.table(BIRTHDAY_TABLE)
-    users = table.all()
+    users = get_all_birthdays()
     for user in users:
         user_id = user.get("user_id")
         try:
@@ -113,7 +110,7 @@ def refresh_user_names(chat_id):
             last_name = chat_member.user.last_name or ""
             name = f"{first_name} {last_name}".strip()
             if user.get("name") != name:
-                table.update({"name": name}, Query().user_id == user_id)
+                update_birthday_name(user_id, name)
         except Exception as e:
             print(f"Не удалось обновить имя для user_id={user_id}: {e}")
 

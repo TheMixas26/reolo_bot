@@ -1,8 +1,8 @@
-from config import predlojka_bot, admin
+from config import predlojka_bot, admin, channel
 from telebot import types
 from bank import edit_currency_info
-from utils import get_commads_for_set
-from birthdays import send_daily_birthdays, send_personal_birthday_notifications
+from utils.utils import get_commads_for_set
+from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications
 
 @predlojka_bot.message_handler(commands=['edit_currency'])
 def editing_currency(message):
@@ -56,3 +56,20 @@ def handle_send_personal_daily(message):
         send_personal_birthday_notifications()
     except Exception as e:
         print(e)
+
+
+@predlojka_bot.message_handler(commands=['fake_post'])
+def handle_fake_post(message):
+    if message.from_user.id != admin:
+        return
+    predlojka_bot.reply_to(message, "Отлично, напиши пост \(подпись от человека весит на тебе\)\n\nНа всякий напоминаю, `👤 {имя}`", parse_mode="MarkdownV2")
+    predlojka_bot.register_next_step_handler(message, handle_fake_post2)
+
+def handle_fake_post2(message):
+    if message.from_user.id != admin:
+        return
+    try:
+        predlojka_bot.send_message(channel, message.text)
+        predlojka_bot.send_message(message.chat.id, "Готово! Пост улетел. Удачи с махинациями)))")
+    except Exception as e:
+        predlojka_bot.send_message(message.chat.id, f"Ошибка при отправке поста: {e}")

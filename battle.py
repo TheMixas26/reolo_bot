@@ -1,6 +1,5 @@
 import random
-from config import db
-from tinydb import Query
+from database.sqlite_db import get_rpg_player, upsert_rpg_player
 
 # --- Классы и расы ---
 CLASS_STATS = {
@@ -105,16 +104,15 @@ def get_loot(tier):
 
 # --- Игроки ---
 def get_player(user_id):
-    result = db.search(Query().id == user_id)
+    result = get_rpg_player(user_id)
     if result:
-        return Player.from_dict(result[0])
-    else:
-        player = Player(user_id)
-        db.insert(player.to_dict())
-        return player
+        return Player.from_dict(result)
+    player = Player(user_id)
+    upsert_rpg_player(player.to_dict())
+    return player
 
 def save_player(player):
-    db.upsert(player.to_dict(), Query().id == player.user_id)
+    upsert_rpg_player(player.to_dict())
 
 # --- Генерация врага ---
 ENEMY_TYPES = [

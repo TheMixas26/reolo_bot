@@ -2,4 +2,6 @@ yandex-ai-studio-sdk
 telebot
 requests
 apscheduler
+quickjs
+sqlite3
 tinydb

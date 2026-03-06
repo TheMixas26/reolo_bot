@@ -1,5 +1,5 @@
-from config import bank_bot, db
-from tinydb import Query
+from config import bank_bot
+from database.sqlite_db import user_exists, create_user_if_missing
 from telebot import types
 from bank import view_currency_info, send_money, bank_get_balance
 
@@ -9,15 +9,10 @@ q = types.ReplyKeyboardRemove()
 
 @bank_bot.message_handler(commands=['start'])
 def hello_from_bank_bot(message):
-    if db.contains(Query().id == message.from_user.id):
+    if user_exists(message.from_user.id):
         bank_bot.reply_to(message, text="С возвращением в Казначейство!")
     else:
-        db.insert({
-            'id': message.from_user.id,
-            'name': f'{message.from_user.first_name}',
-            'last_name': f'{message.from_user.last_name}',
-            'balance': 0
-        })
+        create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
         bank_bot.reply_to(message, text="Добро пожаловать в Имперское Казначейство!")
 
 

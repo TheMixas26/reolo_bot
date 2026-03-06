@@ -1,6 +1,6 @@
-from config import predlojka_bot, db, admin, channel, channel_red, bot_version, chat_mishas_den
+from config import predlojka_bot, admin, channel, channel_red, bot_version, chat_mishas_den
 from telebot import types
-from utils import thx_for_message
+from utils.utils import thx_for_message
 from ai_module import ask_ai, stream_ai
 import time
 import threading

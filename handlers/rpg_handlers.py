@@ -1,6 +1,6 @@
-from config import rpg_bot, db
+from config import rpg_bot
 from telebot import types
-from tinydb import Query
+from database.sqlite_db import user_exists, create_user_if_missing
 from battle import generate_enemy, get_loot, get_player, save_player, attack
 
 active_enemies = {}
@@ -8,16 +8,12 @@ active_enemies = {}
 
 @rpg_bot.message_handler(commands=['start'])
 def hello_from_rpg_bot(message):
-    if db.contains(Query().id == message.from_user.id):
+    if user_exists(message.from_user.id):
         rpg_bot.reply_to(message, text="С возвращением, путник!")
     else:
-        db.insert({
-            'id': message.from_user.id,
-            'name': f'{message.from_user.first_name}',
-            'last_name': f'{message.from_user.last_name}',
-            'balance': 0
-        })
+        create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
         rpg_bot.reply_to(message, text="Добро пожаловать в RPG!")
+
 
 
 

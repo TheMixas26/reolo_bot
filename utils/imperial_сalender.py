@@ -1,9 +1,12 @@
+import json
+import threading
 from quickjs import Context
 
 
 class ImperialCalendar:
     def __init__(self, js_path: str):
         self.ctx = Context()
+        self._lock = threading.Lock()
 
         with open(js_path, 'r', encoding="utf-8") as f:
             js_code = f.read()
@@ -16,51 +19,65 @@ class ImperialCalendar:
             }
         """)
 
+    # --- internal helpers ---
+
+    def _eval_json(self, js_expression: str):
+        """
+        Evaluate a JavaScript expression and return its value as a native
+        Python object by JSON-serializing in the JS context.
+        """
+        with self._lock:
+            json_str = self.ctx.eval(f"JSON.stringify({js_expression})")
+        return json.loads(json_str)
+
     # --- базовый доступ к API ---
 
     def _api(self):
-        return self.ctx.eval(
-            "ImperialCalendar({}, { format: 'iso' })"
-        )
+        with self._lock:
+            return self.ctx.eval(
+                "ImperialCalendar({ format: 'iso' })"
+            )
 
     # --- публичные методы ---
 
     def today(self) -> dict:
         """
-        Полная информация о текущей имперской дате
+        Полная информация о текущей имперской дате (как словарь).
         """
-        return self._api()
+        return self._eval_json("ImperialCalendar({ format: 'iso' })")
 
     def short(self) -> str:
         """
         Короткий формат даты
         """
-        return self.ctx.eval(
-            "ImperialCalendar({}, { format: 'short' })"
-        )
+        with self._lock:
+            return self.ctx.eval(
+                "ImperialCalendar({ format: 'short' })"
+            )
 
     def full(self) -> str:
         """
         Полный формат даты (строкой)
         """
-        return self.ctx.eval(
-            "ImperialCalendar({}, { format: 'full' })"
-        )
+        with self._lock:
+            return self.ctx.eval(
+                "ImperialCalendar({ format: 'full' })"
+            )
 
     def event_today(self):
         """
         Название праздника сегодня или None
         """
-        api = self._api()
-        return api["event"] if "event" in api else None
+        api = self.today()
+        return api.get("event")
 
     def next_events(self, n: int = 1):
         """
         Ближайшие n праздников
         """
-        return self.ctx.eval(f"""
+        return self._eval_json(f"""
             (() => {{
-                const api = ImperialCalendar({{}}, {{ format: 'iso' }});
+                const api = ImperialCalendar({{ format: 'iso' }});
                 return api.nextEvents(
                     {{
                         day: api.day,
@@ -76,9 +93,9 @@ class ImperialCalendar:
         """
         Все праздники с количеством дней до них
         """
-        return self.ctx.eval("""
+        return self._eval_json("""
             (() => {
-                const api = ImperialCalendar({}, { format: 'iso' });
+                const api = ImperialCalendar({ format: 'iso' });
                 return api.getEventsWithCountdown({
                     day: api.day,
                     monthIndex: api.monthIndex,
@@ -91,12 +108,13 @@ class ImperialCalendar:
         """
         Сравнение двух имперских дат
         """
-        return self.ctx.eval(f"""
-            (() => {{
-                const api = ImperialCalendar({{}}, {{ format: 'iso' }});
-                return api.compareImperialDates(
-                    {a},
-                    {b}
-                );
-            }})()
-        """)
+        with self._lock:
+            return self.ctx.eval(f"""
+                (() => {{
+                    const api = ImperialCalendar({ format: 'iso' });
+                    return api.compareImperialDates(
+                        {a},
+                        {b}
+                    );
+                }})()
+            """)

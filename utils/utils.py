@@ -98,9 +98,9 @@ def get_commads_for_set(who_ask):
 def backupBD():
     try:
         date_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
-        filename = f"db_backup_{date_str}.json"
-        
-        with open("database/db.json", mode='r', encoding='utf-8') as f:
+        filename = f"db_backup_{date_str}.sqlite3"
+
+        with open("database/bot.sqlite3", mode='rb') as f:
             predlojka_bot.send_document(
                 admin, 
                 f, 
@@ -108,6 +108,7 @@ def backupBD():
                 caption=f"📦 Ежедневная порция данных за {date_str}",
                 disable_notification=True
             )
+        
         
     except Exception as e:
         # ВСЁ ПРОПАЛО, ШЕФ!!!
@@ -120,12 +121,12 @@ def backupBD():
             НЕ ПОЛУЧИЛОСЬ СОЗДАТЬ РЕЗЕРВНУЮ КОПИЮ БАЗЫ!
 
             ОШИБКА: {error_type}
-            ЧТО СЛОМАЛОСЬ: {str(e)[:150]}
+            ЧТО СЛОМАЛОСЬ: {str(e)[:75]}
 
             ПОВТОРЯЮ: БАЗА ДАННЫХ НЕ СОХРАНЕНА!
             ЕСЛИ СЕРВЕР УМРЁТ — ВСЕ ДНИ РОЖДЕНИЯ СГОРЯТ!
 
-            СРОЧНО НА СЕРВЕР!!! ПРЯМО СЕЙЧАС!!!
+            СРОЧНО НА СЕРВЕР!!! ПРЯМО СЕЙЧАС!!! НЕМЕДЛЕННО!!!
         """
 
         try:

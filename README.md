@@ -20,7 +20,7 @@
 
 Файл config.py служит файлом, хранящим в себе все значения и переменные, необходимые для работы бота. В репозитории он отсутсвует - из соображений безопастности. Однако, если вы решите запустить бота у себя, вот информация о том, как должен выглядеть файл.
 
-```
+```python
 import telebot, tinydb
 
 PREDLOJKA_TOKEN='ВАШ ТОКЕН'
@@ -34,7 +34,11 @@ chat_mishas_den=-100223456789 # id группы обсуждения с прип
 commission=0.02 # коммисия при вереводе валюты
 location = ({lat}, {lon})
 bot_version="Версия бота"
-predlojka_bot = telebot.TeleBot(TOKEN)
+
+predlojka_bot = telebot.TeleBot(PREDLOJKA_TOKEN)
+bank_bot = telebot.TeleBot(BANK_TOKEN)
+rpg_bot = telebot.TeleBot(RPG_TOKEN)
+
 db=tinydb.TinyDB('./database/db.json')
 calendar = ImperialCalendar('imperial_date_generator.js')
 # -------------- AI SECTION ---------------

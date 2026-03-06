@@ -1,6 +1,6 @@
 import pickle
-from config import predlojka_bot, db, commission
-from tinydb import Query
+from config import predlojka_bot, commission
+from database.sqlite_db import user_exists, get_balance, set_balance
 
 
 def edit_currency_info(message, a, b):                  # изменяет в файле значения рублей и батов
@@ -33,15 +33,15 @@ def get_money(message, amount):
 	try:
 		to_user_id=int(message.text)
 
-		if db.contains(Query().id == to_user_id):
+		if user_exists(to_user_id):
 
-			new_balance=(db.get(Query().id == to_user_id)['balance']+amount)
-			new_sender_balance=db.get(Query().id == message.from_user.id)['balance']-amount
+			new_balance=(get_balance(to_user_id)+amount)
+			new_sender_balance=get_balance(message.from_user.id)-amount
 
 			total_amount=new_balance - (new_balance*commission)
 
-			db.update({"balance": total_amount}, Query().id == to_user_id)
-			db.update({"balance": new_sender_balance}, Query().id == message.from_user.id)
+			set_balance(to_user_id, total_amount)
+			set_balance(message.from_user.id, new_sender_balance)
 
 			predlojka_bot.reply_to(message, "Перевод совершён!")
 
@@ -61,7 +61,7 @@ def send_money(message):
 	
 	try:
 		amount=int(message.text)
-		sender_balance=db.get(Query().id == message.from_user.id)['balance']
+		sender_balance=get_balance(message.from_user.id)
 		
 
 		if sender_balance >= amount:
@@ -84,4 +84,4 @@ def send_money(message):
 
 
 def bank_get_balance(message):
-	return db.get(Query().id == message.from_user.id)['balance']
+	return get_balance(message.from_user.id)

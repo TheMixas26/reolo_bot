@@ -1,24 +1,19 @@
-from config import predlojka_bot, db, bot_version, admin, chat_mishas_den
-from tinydb import Query
-from birthdays import add_birthday, add_birthday_by_username
+from config import predlojka_bot, bot_version, admin, chat_mishas_den
+from database.sqlite_db import user_exists, create_user_if_missing, get_birthday, set_personal_notify
+from utils.birthdays import add_birthday, add_birthday_by_username
 
 @predlojka_bot.message_handler(commands=['start'])
 def start(message):
-    if db.contains(Query().id == message.from_user.id):
+    if user_exists(message.from_user.id):
         predlojka_bot.reply_to(message, text="С возвращением в Предложку! Ожидаем постов)")
     else:
-        db.insert({
-            'id': message.from_user.id,
-            'name': f'{message.from_user.first_name}',
-            'last_name': f'{message.from_user.last_name}',
-            'balance': 0
-        })
+        create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
         predlojka_bot.reply_to(message, text="Добро пожаловать в Империю!")
 
 @predlojka_bot.message_handler(commands=['changelog'])
 def changelog(message):
     try:
-        with open('changelog.txt', mode='r', encoding='utf-8') as f:
+        with open('varibles/changelog.txt', mode='r', encoding='utf-8') as f:
             predlojka_bot.send_document(
                 message.chat.id, f,
                 reply_to_message_id=message.message_id,
@@ -40,7 +35,7 @@ def changelog(message):
 @predlojka_bot.message_handler(commands=['help'])
 def help(message):
     try:
-        with open('help_info.txt', mode='r', encoding='utf-8') as f:
+        with open('varibles/help_info.txt', mode='r', encoding='utf-8') as f:
             help_string = f.read()
         predlojka_bot.reply_to(message, text=help_string, parse_mode='HTML')
     except Exception as e:
@@ -54,7 +49,7 @@ def help(message):
 
 @predlojka_bot.message_handler(commands=['battle'])
 def redirect_to_rpg_bot(message):
-    predlojka_bot.reply_to(message, "Притормози, дружище! вся RPG система переехала в другого бота! Не волнуйся, формально, это всё ещё я, бот запущен в том же коде) И тем ни менее! Бегогм в него! \n\n@reolo_rpg_bot")
+    predlojka_bot.reply_to(message, "Притормози, дружище! вся RPG система переехала в другого бота! Не волнуйся, формально, это всё ещё я, бот запущен в том же коде) И тем ни менее! Бегом в него! \n\n@reolo_rpg_bot")
 
 
 
@@ -103,11 +98,10 @@ def handle_add_birthday(message):
 @predlojka_bot.message_handler(commands=['personal_notifications'])
 def handle_personal_notifications(message):
     user_id = message.from_user.id
-    table = db.table("birthdays")
-    user = table.get(Query().user_id == user_id)
+    user = get_birthday(user_id)
     if user:
         current = user.get("personal_notify", False)
-        table.update({"personal_notify": not current}, Query().user_id == user_id)
+        set_personal_notify(user_id, not current)
         if not current:
             predlojka_bot.reply_to(message, "Личные уведомления о дне рождения включены!")
         else:
