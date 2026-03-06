@@ -1,6 +1,6 @@
 from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications
 from apscheduler.schedulers.background import BackgroundScheduler
-from handlers import user_handlers, admin_handlers, misc_handlers, predlojka_handlers, bank_handlers, rpg_handlers
+from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, predlojka_handlers, bank_handlers, rpg_handlers
 import logging
 from threading import Thread
 import time
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     with open('bot_errors.log', 'w') as f:
         f.write("=== Новая сессия ===\n")
     
-    logger.info("🎮 Запускаю всех ботов...")
+    logger.info("⚠️ ЗАПУСК БОТА В DEBUG MODE!!!!") if DEBUG_MODE else logger.info("🎮 Запускаю всех ботов...") 
     
     # Запускаем каждого бота в отдельном потоке
     threads = []

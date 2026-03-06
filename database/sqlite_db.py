@@ -49,27 +49,61 @@ def init_db() -> None:
                 dodge REAL NOT NULL,
                 inventory_json TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS achievements (
+                id INTEGER PRIMARY KEY,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS user_achievements (
+                user_id INTEGER NOT NULL,
+                achievement_id INTEGER NOT NULL,
+                obtained_at INTEGER,
+                PRIMARY KEY (user_id, achievement_id),
+                FOREIGN KEY (achievement_id) REFERENCES achievements(id)
+            );
             """
         )
         _conn.commit()
 
 
 # ---- user_accounts ----
-def user_exists(user_id: int) -> bool:
-    row = _conn.execute("SELECT 1 FROM user_accounts WHERE user_id = ?", (user_id,)).fetchone()
+def _normalize_user_id(user_id) -> int | None:
+    try:
+        return int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def user_exists(user_id: int | str) -> bool:
+    normalized_id = _normalize_user_id(user_id)
+    if normalized_id is None:
+        return False
+
+    row = _conn.execute("SELECT 1 FROM user_accounts WHERE user_id = ?", (normalized_id,)).fetchone()
     return row is not None
 
 
-def create_user_if_missing(user_id: int, first_name: str | None, last_name: str | None) -> None:
+def create_user_if_missing(user_id: int | str, first_name: str | None, last_name: str | None) -> None:
+    normalized_id = _normalize_user_id(user_id)
+    if normalized_id is None:
+        return
+
     with _DB_LOCK:
         _conn.execute(
             """
             INSERT OR IGNORE INTO user_accounts(user_id, first_name, last_name, balance)
             VALUES (?, ?, ?, 0)
             """,
-            (user_id, first_name, last_name),
+            (normalized_id, first_name, last_name),
         )
         _conn.commit()
+
+def get_all_users() -> list[dict]:
+    rows = _conn.execute("SELECT user_id, first_name, last_name, balance FROM user_accounts").fetchall()
+    return [dict(row) for row in rows]
 
 
 def get_balance(user_id: int) -> float:
@@ -170,6 +204,64 @@ def upsert_rpg_player(player_data: dict) -> None:
             ),
         )
         _conn.commit()
+
+
+# -=-=-=-=-=-=- Achievements -=-=-=-=-=-=-
+
+
+
+def achievements_list(code: str) -> list[dict]:
+    rows = _conn.execute("SELECT id, code, name, description FROM achievements WHERE code = ?", (code,)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def add_achievement(code: str, name: str, description: str) -> None:
+    with _DB_LOCK:
+        _conn.execute(
+            "INSERT OR IGNORE INTO achievements(code, name, description) VALUES (?, ?, ?)",
+            (code, name, description),
+        )
+        _conn.commit()
+
+
+def grant_achievement(user_id: int, achievement_code: str) -> None:
+    with _DB_LOCK:
+        achievement = _conn.execute("SELECT id FROM achievements WHERE code = ?", (achievement_code,)).fetchone()
+        if achievement is None:
+            raise ValueError(f"Achievement with code '{achievement_code}' does not exist.")
+        achievement_id = achievement["id"]
+        _conn.execute(
+            "INSERT OR IGNORE INTO user_achievements(user_id, achievement_id, obtained_at) VALUES (?, ?, strftime('%s', 'now'))",
+            (user_id, achievement_id),
+        )
+        _conn.commit()
+
+
+def revoke_achievement(user_id: int, achievement_code: str) -> None:
+    with _DB_LOCK:
+        achievement = _conn.execute("SELECT id FROM achievements WHERE code = ?", (achievement_code,)).fetchone()
+        if achievement is None:
+            raise ValueError(f"Achievement with code '{achievement_code}' does not exist.")
+        achievement_id = achievement["id"]
+        _conn.execute(
+            "DELETE FROM user_achievements WHERE user_id = ? AND achievement_id = ?",
+            (user_id, achievement_id),
+        )
+        _conn.commit()
+
+def get_user_achievements(user_id: int) -> list[dict]:
+    rows = _conn.execute(
+        """
+        SELECT a.code, a.name, a.description, ua.obtained_at
+        FROM user_achievements ua
+        JOIN achievements a ON ua.achievement_id = a.id
+        WHERE ua.user_id = ?
+        """,
+        (user_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 
 
 init_db()

@@ -3,6 +3,7 @@ from telebot import types
 from bank import edit_currency_info
 from utils.utils import get_commads_for_set
 from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications
+from database.sqlite_db import get_all_users
 
 @predlojka_bot.message_handler(commands=['edit_currency'])
 def editing_currency(message):
@@ -73,3 +74,36 @@ def handle_fake_post2(message):
         predlojka_bot.send_message(message.chat.id, "Готово! Пост улетел. Удачи с махинациями)))")
     except Exception as e:
         predlojka_bot.send_message(message.chat.id, f"Ошибка при отправке поста: {e}")
+
+
+
+@predlojka_bot.message_handler(commands=['stop_bot'])
+def stop_bot(message):
+    if message.from_user.id != admin:
+        return
+    predlojka_bot.reply_to(message, "Останавливаю бота...")
+    SystemExit("Бот остановлен администратором")
+
+
+
+@predlojka_bot.message_handler(commands=['public_notify'])
+def public_notify_command(message):
+    if message.from_user.id != admin:
+        return
+    predlojka_bot.reply_to(message, "Ого! У нас тут рассылка намечается! Напиши сообщение, которое хочешь разослать всем пользователям. А потом доверься мне))")
+    predlojka_bot.register_next_step_handler(message, handle_public_notify)
+
+
+def handle_public_notify(message):
+    if message.from_user.id != admin:
+        return
+    try:
+        users = get_all_users()
+        for user in users:
+            try:
+                predlojka_bot.send_message(user['user_id'], message.text)
+            except Exception as e:
+                print(f"Ошибка при отправке сообщения пользователю {user['user_id']}: {e}")
+        predlojka_bot.reply_to(message, "Рассылка завершена!")
+    except Exception as e:
+        predlojka_bot.reply_to(message, f"Ошибка при рассылке: {e}")

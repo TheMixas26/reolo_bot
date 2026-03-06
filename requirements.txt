@@ -1,7 +1,7 @@
-yandex-ai-studio-sdk
-telebot
-requests
-apscheduler
-quickjs
+yandex-ai-studio-sdk>=0.19.2
+telebot>=0.0.5
+requests>=2.32.5
+apscheduler>=3.11.2
+quickjs>=1.19.4
 sqlite3
-tinydb
+tinydb>=4.8.2

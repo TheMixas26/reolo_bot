@@ -22,13 +22,23 @@
 
 ```python
 import telebot, tinydb
+from utils.imperial_сalender import ImperialCalendar
 
-PREDLOJKA_TOKEN='ВАШ ТОКЕН'
+# Дебаг режим переключает токен и id канала (и ещё некоторые штучки), чтобы мне, как разработчику было удобно тестировать всё на другом боте, а не на рабочем. Если вы не планируете дополнять код, ставтье False и наслаждайтесь
+DEBUG_MODE = True/False
+
 BANK_TOKEN='' # токен бота, в котором будет банковская система
 RPG_TOKEN='' # токен бота, в котором будет RPG система
 
+
+if DEBUG_MODE:
+    channel=-1009876543210 # id тестового канала
+    PREDLOJKA_TOKEN='' # <- токен тестового бота, чтобы не использовать рабочего бота для эксперементов.
+else:
+    channel=-100223456789 # Основной бот и основной токен соотвесвтенно
+    PREDLOJKA_TOKEN='6847311755:AAGCpb5CXu1T7_SHVK3fYO9cd5dDMhWUDOk' # <- токен бота
+
 admin=123456789 # id админа
-channel=-100223456789 # id канала с припиской  '-100'
 channel_red=223456789 # id канала с припиской
 chat_mishas_den=-100223456789 # id группы обсуждения с припиской '-100', название переменной обусловлено названием чата, простите
 commission=0.02 # коммисия при вереводе валюты
@@ -40,9 +50,14 @@ bank_bot = telebot.TeleBot(BANK_TOKEN)
 rpg_bot = telebot.TeleBot(RPG_TOKEN)
 
 db=tinydb.TinyDB('./database/db.json')
-calendar = ImperialCalendar('imperial_date_generator.js')
+calendar = ImperialCalendar('utils/imperial_date_generator.js')
+
 # -------------- AI SECTION ---------------
 CATALOG_ID = "{id вашего облака в Yandex.Cloud}"
 SECRET_KEY = "{api ключ для работы с YandexGPT}"
 # -----------------------------------------
+
+
+
+
 ```

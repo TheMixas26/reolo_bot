@@ -1,11 +1,11 @@
-from config import predlojka_bot, admin, channel, channel_red, bot_version, chat_mishas_den
+from config import predlojka_bot, admin, channel, channel_red, chat_mishas_den
 from telebot import types
 from utils.utils import thx_for_message
 from ai_module import ask_ai, stream_ai
 import time
 import threading
 import logging
-
+from database.sqlite_db import create_user_if_missing, user_exists
 # Настройка логирования для отладки
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -46,6 +46,10 @@ def safe_send_media_group(chat_id, media, max_retries=3):
 # --- Приём сообщений ---
 @predlojka_bot.message_handler(content_types=['sticker', 'text', 'document', 'audio', 'voice'])
 def accepter(message):
+
+    if not user_exists(message.from_user.id):
+        create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
+
     if message.content_type == 'text' and message.text.startswith('/'):
         predlojka_bot.reply_to(message, "Боюсь, такой команды я не знаю...")
     else:
@@ -168,6 +172,10 @@ def accepter(message):
 
 @predlojka_bot.callback_query_handler(func=lambda call: call.data.startswith("+album|"))
 def accept_album(call):
+
+    if not user_exists(call.message.from_user.id):
+        create_user_if_missing(call.message.from_user.id, call.message.from_user.first_name, call.message.from_user.last_name)
+
     try:
         logger.info(f"Обработка принятия альбома: {call.data}")
         
