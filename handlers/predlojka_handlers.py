@@ -5,7 +5,7 @@ from ai_module import ask_ai, stream_ai
 import time
 import threading
 import logging
-from database.sqlite_db import create_user_if_missing, user_exists
+from database.sqlite_db import create_user_if_missing, user_exists, add_to_post_counter
 # Настройка логирования для отладки
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -17,10 +17,11 @@ MEDIA_GROUP_TIMEOUT = 2.0
 album_moderation_messages = {}  # media_group_id -> [message_ids]
 album_media_cache = {}          # media_group_id -> media list
 
-def none_type(obj):
+def none_type(obj: any) -> str:
+    """Преобразует None в пустую строку, а остальные объекты возвращает как есть"""
     return "" if obj is None else f'{obj}'
 
-def safe_delete_message(chat_id, message_id, max_retries=3):
+def safe_delete_message(chat_id: int, message_id: int, max_retries: int = 3) -> bool:
     """Безопасное удаление сообщения с повторными попытками"""
     for attempt in range(max_retries):
         try:
@@ -31,7 +32,7 @@ def safe_delete_message(chat_id, message_id, max_retries=3):
             time.sleep(0.5)
     return False
 
-def safe_send_media_group(chat_id, media, max_retries=3):
+def safe_send_media_group(chat_id: int, media: list, max_retries: int = 3) -> list | None:
     """Безопасная отправка медиагруппы с повторными попытками"""
     for attempt in range(max_retries):
         try:
@@ -102,6 +103,8 @@ def accepter(message):
                     loop.close()
 
         elif message.chat.id not in (channel, channel_red, -1002228334833):
+            add_to_post_counter(message.from_user.id)
+            
             markup = types.InlineKeyboardMarkup()
             adafa_think_text_content = message.text if message.content_type == 'text' else message.caption or ""
             # Определяем имя пользователя

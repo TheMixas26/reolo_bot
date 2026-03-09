@@ -1,4 +1,4 @@
-from config import predlojka_bot, bot_version, admin, chat_mishas_den
+from config import predlojka_bot, admin, chat_mishas_den
 from database.sqlite_db import user_exists, create_user_if_missing, get_birthday, set_personal_notify
 from utils.birthdays import add_birthday, add_birthday_by_username
 
@@ -10,14 +10,31 @@ def start(message):
         create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
         predlojka_bot.reply_to(message, text="Добро пожаловать в Империю!")
 
+
+
 @predlojka_bot.message_handler(commands=['changelog'])
 def changelog(message):
+    build = None
+    name = None
+
     try:
+        with open('varibles/changelog.txt', mode='r', encoding='utf-8') as f:
+            for line in f:
+                if "BUILD" in line and build is None:
+                    build = line.split("BUILD")[1].strip(" | \n")
+                if "NAME" in line and name is None:
+                    name = line.split("NAME")[1].strip(" | \n")
+
+                if build and name:
+                    break
+
+            bot_version = f"{build} - {name}"
+
         with open('varibles/changelog.txt', mode='r', encoding='utf-8') as f:
             predlojka_bot.send_document(
                 message.chat.id, f,
                 reply_to_message_id=message.message_id,
-                caption=f"Вот моя история обновлений! Текущая версия - <b>{bot_version}</b>",
+                caption=f"Вот моя история обновлений! Текущая версия: <b>{bot_version}</b>",
                 parse_mode='HTML'
             )
     except Exception as e:

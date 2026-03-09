@@ -3,7 +3,8 @@ import json
 from config import CATALOG_ID, SECRET_KEY
 from ai_module import SYSTEM_PROMPT_1, SYSTEM_PROMPT_2, ADDITIONAL_TEMPLATE, SYSTEM_PROMPT_podval1
 
-def count_tokens(text, model="yandexgpt-lite"):
+def count_tokens(text: str, model="yandexgpt-lite") -> int:
+    """Отправляет текст на API Яндекс GPT для получения количества токенов"""
     url = "https://llm.api.cloud.yandex.net/foundationModels/v1/tokenize"
     headers = {
         "Authorization": f"Api-Key {SECRET_KEY}",

@@ -21,7 +21,7 @@ class ImperialCalendar:
 
     # --- internal helpers ---
 
-    def _eval_json(self, js_expression: str):
+    def _eval_json(self, js_expression: str) -> dict:
         """
         Evaluate a JavaScript expression and return its value as a native
         Python object by JSON-serializing in the JS context.
@@ -64,14 +64,14 @@ class ImperialCalendar:
                 "ImperialCalendar({ format: 'full' })"
             )
 
-    def event_today(self):
+    def event_today(self) -> str | None:
         """
         Название праздника сегодня или None
         """
         api = self.today()
         return api.get("event")
 
-    def next_events(self, n: int = 1):
+    def next_events(self, n: int = 1) -> list:
         """
         Ближайшие n праздников
         """
@@ -89,7 +89,7 @@ class ImperialCalendar:
             }})()
         """)
 
-    def all_events_with_countdown(self):
+    def all_events_with_countdown(self) -> list:
         """
         Все праздники с количеством дней до них
         """

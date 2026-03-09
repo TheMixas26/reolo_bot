@@ -1,5 +1,5 @@
 from config import predlojka_bot, admin
-from database.sqlite_db import achievements_list, add_achievement, grant_achievement, revoke_achievement, get_user_achievements, get_balance
+from database.sqlite_db import achievements_list, add_achievement, grant_achievement, revoke_achievement, get_user_achievements, get_balance, update_achievement
 
 
 @predlojka_bot.message_handler(commands=['achievements'])
@@ -111,4 +111,29 @@ def revoke_achievement_command(message):
             message,
             "Формат:\n"
             "/revoke_achievement user_id | achievement_code"
+        )
+
+
+@predlojka_bot.message_handler(commands=['add_confitions'])
+def add_conditions_command(message):
+    if message.from_user.id != admin:
+        return
+
+    try:
+        command, data = message.text.split(' ', 1)
+
+        achievement_code, conditions = [x.strip() for x in data.split('|', 1)]
+
+        update_achievement(achievement_code, conditions=conditions)
+
+        predlojka_bot.reply_to(
+            message,
+            f"Условия достижения '{achievement_code}' обновлены: {conditions}."
+        )
+
+    except ValueError:
+        predlojka_bot.reply_to(
+            message,
+            "Формат:\n"
+            "/add_conditions achievement_code | conditions"
         )

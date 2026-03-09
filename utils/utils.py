@@ -1,10 +1,10 @@
 from random import choice, random
 from telebot import types
-from config import predlojka_bot, admin
+from config import predlojka_bot, admin, backup_chat
 from datetime import datetime
 
-def thx_for_message(user_name, mes_type):
-    
+def thx_for_message(user_name: str, mes_type: str) -> str:
+    """Генерирует рандомный ответ в зависимости от типа сообщения (вопрос или утверждение)"""
     variants_v = [
         f"Спасибо за ваше сообщение, {user_name}!!!",
         f"Спасибо за новый пост, {user_name}!!!",
@@ -70,7 +70,7 @@ def thx_for_message(user_name, mes_type):
     elif mes_type == '?': return choice(variants_q)
 
 
-def get_commads_for_set(who_ask):
+def get_commads_for_set(who_ask: str) -> list:
     default_commands = [
         types.BotCommand("start", "Запустить бота"),
         types.BotCommand("help", "Помощь"),
@@ -95,14 +95,15 @@ def get_commads_for_set(who_ask):
     else: return default_commands
 
 
-def backupBD():
+def backupDB():
+    """Создаёт резервную копию базы данных и отправляет её админу в Телеграме"""
     try:
         date_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
         filename = f"db_backup_{date_str}.sqlite3"
 
         with open("database/bot.sqlite3", mode='rb') as f:
             predlojka_bot.send_document(
-                admin, 
+                backup_chat, 
                 f, 
                 visible_file_name=filename,
                 caption=f"📦 Ежедневная порция данных за {date_str}",

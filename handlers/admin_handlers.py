@@ -1,7 +1,7 @@
 from config import predlojka_bot, admin, channel
 from telebot import types
 from bank import edit_currency_info
-from utils.utils import get_commads_for_set
+from utils.utils import get_commads_for_set, backupDB
 from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications
 from database.sqlite_db import get_all_users
 
@@ -107,3 +107,12 @@ def handle_public_notify(message):
         predlojka_bot.reply_to(message, "Рассылка завершена!")
     except Exception as e:
         predlojka_bot.reply_to(message, f"Ошибка при рассылке: {e}")
+
+
+
+@predlojka_bot.message_handler(commands=['send_actual_db'])
+def send_actual_db(message):
+    if message.from_user.id != admin:
+        return
+    backupDB()
+    predlojka_bot.reply_to(message, "Резервная копия базы данных отправлена!")

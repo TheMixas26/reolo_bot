@@ -1,4 +1,4 @@
-from config import predlojka_bot, chat_mishas_den, admin
+from config import predlojka_bot, chat_mishas_den, admin, channel
 from database.sqlite_db import (
     upsert_birthday,
     get_all_birthdays as fetch_all_birthdays,
@@ -14,6 +14,7 @@ BIRTHDAY_TABLE = "birthdays"
 
 
 def send_daily_birthdays():
+    """Отправляет ежедневное уведомление в чат с днями рождений."""
     try:
         text = format_birthdays_list()
         predlojka_bot.send_message(chat_mishas_den, text)
@@ -25,7 +26,7 @@ def send_daily_birthdays():
 
 
 
-def add_birthday(user_id, name, date_str):
+def add_birthday(user_id, name, date_str) -> bool:
     """
     Добавляет или обновляет день рождения пользователя.
     date_str — строка в формате 'ДД.ММ' или 'ДД.ММ.ГГГГ'
@@ -44,7 +45,9 @@ def add_birthday(user_id, name, date_str):
         print(f"Ошибка при добавлении дня рождения: {e}")
         return False
 
-def add_birthday_by_username(username, date_str, chat_id):
+def add_birthday_by_username(username, date_str, chat_id) -> tuple[bool, str | None]:
+    """Добавляет или обновляет день рождения пользователя по его имени пользователя в Telegram.
+    date_str — строка в формате 'ДД.ММ' или 'ДД.ММ.ГГГГ'"""
     try:
         user = predlojka_bot.get_chat_member(chat_id, username)
         first_name = user.user.first_name or ""
@@ -69,10 +72,12 @@ def add_birthday_by_username(username, date_str, chat_id):
         print(f"Ошибка при добавлении дня рождения: {e}")
         return False, None
 
-def get_all_birthdays():
+def get_all_birthdays() -> list[dict]:
+    """Получает список всех дней рождений из базы данных."""
     return fetch_all_birthdays()
 
-def days_until_birthday(day, month):
+def days_until_birthday(day, month) -> int:
+    """Вычисляет количество дней до следующего дня рождения."""
     today = datetime.now().date()  # только дата, без времени
     this_year = today.year
     try:
@@ -86,7 +91,8 @@ def days_until_birthday(day, month):
     return (bday - today).days
 
 
-def plural_days(n):
+def plural_days(n: int) -> str:
+    """Возвращает правильное склонение слова "день" в зависимости от количества."""
     n = abs(n)
     if 11 <= n % 100 <= 14:
         return "дней"
@@ -97,7 +103,7 @@ def plural_days(n):
     return "дней"
 
 
-def refresh_user_names(chat_id):
+def refresh_user_names(chat_id: int) -> None:
     """
     Обновляет имена всех пользователей в базе, если они изменились.
     """
@@ -116,7 +122,9 @@ def refresh_user_names(chat_id):
 
 
 
-def format_birthdays_list(who_asking_flag=0):
+def format_birthdays_list(who_asking_flag=0) -> str:
+    """Формирует текст с ближайшими днями рождений.
+    who_asking_flag: 0 — для ежедневного уведомления, 1 — для личного сообщения пользователю."""
     refresh_user_names(chat_mishas_den)
     bdays = get_all_birthdays()
     if not bdays:
@@ -141,7 +149,7 @@ def format_birthdays_list(who_asking_flag=0):
         lines = lines[:3]
         return "Вот ближайшие дни рождения других пользователей!\n" + "\n".join(lines)
 
-def send_personal_birthday_notifications():
+def send_personal_birthday_notifications() -> None:
     """
     Отправляет каждому пользователю личное уведомление о его дне рождения.
     """
@@ -167,3 +175,33 @@ def send_personal_birthday_notifications():
             predlojka_bot.send_message(user_id, fin_text)
         except Exception as e:
             print(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}")
+
+
+def send_birthday_congratulation() -> None:
+    """Отправляет поздравление с днем рождения пользователю."""
+    bdays = get_all_birthdays()
+    for b in bdays:
+        user_id = b.get("user_id")
+        name = b.get("name")
+        day = b.get("day")
+        month = b.get("month")
+        days_left = days_until_birthday(day, month)
+        if days_left == 0:
+
+            # ! Бляха, я не могу сейчас решить вопрос, нет времени, но поздравление должно генерироваться через нейросеть не забыть бы...
+            congratulation_text_dm = f"Здравствуйте, {name}! Кажется, у вас сегодня день рождения... Если конечно мои подвальные записи не врут)\n\nМы всей Империей вас поздравляем! +1000 соуиального рейтинга и бесчисленное вам уважение!\n\nСпасибо вам за все ваши посты в Предложке (если вы конечно отправляли), мне бесконечно приятно, что наш канал живёт благодаря таким пользователям, как вы! С праздником вас, {name}!"
+
+            congratulation_text_ch = f"Товарищи подписчики! Сегодня не обычный день...\n\n🎉 Сегодня день рождения у нашего дорогого подписчика {name}! Давайте поздравим его в комментариях и пожелаем всего самого лучшего! 🎂\n\n{name}, мы поздравляем вас с днем рождения! Счастья вам, здоровья и успехов! Мы вас обожаем!!!"
+
+            try:
+                predlojka_bot.send_message(
+                    user_id,
+                    congratulation_text_dm
+                )
+
+                predlojka_bot.send_message(
+                    channel,
+                    congratulation_text_ch
+                )
+            except Exception as e:
+                print(f"Не удалось отправить поздравление для user_id={user_id}: {e}")
