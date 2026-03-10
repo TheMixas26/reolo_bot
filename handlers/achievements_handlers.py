@@ -1,10 +1,10 @@
 from config import predlojka_bot, admin
-from database.sqlite_db import achievements_list, add_achievement, grant_achievement, revoke_achievement, get_user_achievements, get_balance, update_achievement
+from database.sqlite_db import get_all_achievements, add_achievement, grant_achievement, revoke_achievement, get_user_achievements, get_balance, update_achievement
 
 
 @predlojka_bot.message_handler(commands=['achievements'])
 def list_achievements_command(message):
-    achievements = achievements_list('')
+    achievements = get_all_achievements()
     if not achievements:
         predlojka_bot.reply_to(message, "Пока нет достижений.")
     else:
