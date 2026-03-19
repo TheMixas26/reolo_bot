@@ -1,7 +1,7 @@
 from config import predlojka_bot, admin, channel, channel_red, chat_mishas_den
 from telebot import types
 from utils.utils import thx_for_message
-from ai_module import ask_ai, stream_ai
+from ai.ai_module import ask_ai, stream_ai
 import time
 import threading
 import logging

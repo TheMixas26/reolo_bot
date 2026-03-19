@@ -63,7 +63,7 @@ def handle_send_personal_daily(message):
 def handle_fake_post(message):
     if message.from_user.id != admin:
         return
-    predlojka_bot.reply_to(message, "Отлично, напиши пост \(подпись от человека весит на тебе\)\n\nНа всякий напоминаю, `👤 {имя}`", parse_mode="MarkdownV2")
+    predlojka_bot.reply_to(message, "Отлично, напиши пост \(подпись от человека висит на тебе\)\n\nНа всякий напоминаю, `👤 {имя}`", parse_mode="MarkdownV2")
     predlojka_bot.register_next_step_handler(message, handle_fake_post2)
 
 def handle_fake_post2(message):
@@ -86,7 +86,7 @@ def stop_bot(message):
 
 
 
-@predlojka_bot.message_handler(commands=['public_notify'])
+@predlojka_bot.message_handler(commands=['broadcast'])
 def public_notify_command(message):
     if message.from_user.id != admin:
         return

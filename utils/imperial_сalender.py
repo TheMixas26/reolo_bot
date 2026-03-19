@@ -1,6 +1,7 @@
 import json
 import threading
 from quickjs import Context
+from config import calendar, predlojka_bot, channel
 
 
 class ImperialCalendar:
@@ -118,3 +119,16 @@ class ImperialCalendar:
                     );
                 }})()
             """)
+
+
+
+
+def check_imperial_events():
+    today_info = calendar.today()
+    event_today = today_info.get("event")
+    if event_today:
+        message = f"Сегодня {today_info['day']} {today_info['month']} {today_info['year']} по Имперскому календарю! Праздник: {event_today} 🎉"
+    else:
+        message = f"Сегодня {today_info['day']} {today_info['month']} {today_info['year']} по Имперскому календарю. Сегодня нет праздников."
+    
+    predlojka_bot.send_message(channel, message)

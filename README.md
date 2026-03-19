@@ -188,7 +188,7 @@ database/bot.sqlite3
 ## Требования
 
 * Python **3.10+**
-* Telegram Bot API токены
+* Telegram Bot API токеныs
 * (опционально) ключи **Yandex Cloud** для AI
 
 Установка зависимостей:

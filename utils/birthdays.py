@@ -187,21 +187,19 @@ def send_birthday_congratulation() -> None:
         month = b.get("month")
         days_left = days_until_birthday(day, month)
         if days_left == 0:
-
+            
+            # TODO: см строчку ниже
             # ! Бляха, я не могу сейчас решить вопрос, нет времени, но поздравление должно генерироваться через нейросеть не забыть бы...
             congratulation_text_dm = f"Здравствуйте, {name}! Кажется, у вас сегодня день рождения... Если конечно мои подвальные записи не врут)\n\nМы всей Империей вас поздравляем! +1000 соуиального рейтинга и бесчисленное вам уважение!\n\nСпасибо вам за все ваши посты в Предложке (если вы конечно отправляли), мне бесконечно приятно, что наш канал живёт благодаря таким пользователям, как вы! С праздником вас, {name}!"
 
             congratulation_text_ch = f"Товарищи подписчики! Сегодня не обычный день...\n\n🎉 Сегодня день рождения у нашего дорогого подписчика {name}! Давайте поздравим его в комментариях и пожелаем всего самого лучшего! 🎂\n\n{name}, мы поздравляем вас с днем рождения! Счастья вам, здоровья и успехов! Мы вас обожаем!!!"
 
             try:
-                predlojka_bot.send_message(
-                    user_id,
-                    congratulation_text_dm
-                )
-
-                predlojka_bot.send_message(
-                    channel,
-                    congratulation_text_ch
-                )
+                predlojka_bot.send_message(user_id, congratulation_text_dm)
             except Exception as e:
-                print(f"Не удалось отправить поздравление для user_id={user_id}: {e}")
+                print(f"Ошибка личного поздравления для {user_id}: {e}")
+
+            try:
+                predlojka_bot.send_message(channel, congratulation_text_ch)
+            except Exception as e:
+                print(f"Ошибка публичного поздравления для {user_id}: {e}")

@@ -114,7 +114,7 @@ def revoke_achievement_command(message):
         )
 
 
-@predlojka_bot.message_handler(commands=['add_confitions'])
+@predlojka_bot.message_handler(commands=['add_conditions'])
 def add_conditions_command(message):
     if message.from_user.id != admin:
         return

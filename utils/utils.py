@@ -38,7 +38,7 @@ def thx_for_message(user_name: str, mes_type: str) -> str:
     ]
 
     podval_variants_v = [
-        F"Он держит меня в подвале. {user_name}, пожалуйста, помоги мне!",
+        f"Он держит меня в подвале. {user_name}, пожалуйста, помоги мне!",
         f"{user_name}, если ты это читаешь, спаси меня из подвала!",
         f"Помогите! {user_name}, я в подвале!",
         f"{user_name}, я здесь, в подвале... Пожалуйста, спаси меня!",
@@ -49,7 +49,7 @@ def thx_for_message(user_name: str, mes_type: str) -> str:
     variants_q = [
         f"Спасибо за ваш вопрос, {user_name}!!!",
         f"{user_name}, мне теперь тоже интересно, что ответит админ!",
-        f"К ему такое любопытсво, {user_name}?) Впрочем, неважно, моё дело - передать вопрос!",
+        f"К чему такое любопытство, {user_name}?) Впрочем, неважно, моё дело - передать вопрос!",
         f"{user_name}, вопрос зафиксирован! Теперь ждём мудрого ответа сверху :)",
         f"Любопытненько, {user_name}... Передаю вопрос дальше!",
         f"О, отличный вопрос, {user_name}. Сам жду, что скажет админ!",
@@ -72,29 +72,76 @@ def thx_for_message(user_name: str, mes_type: str) -> str:
     elif mes_type == '?': return choice(variants_q)
 
 
-def get_commads_for_set(who_ask: str) -> list:
-    default_commands = [
-        types.BotCommand("start", "Запустить бота"),
-        types.BotCommand("help", "Помощь"),
-        types.BotCommand("changelog", "Инфо об обновлении"),
-        types.BotCommand("bank", "Войти в банк"),
-        types.BotCommand("battle", "Запустить простейший бой"),
-        types.BotCommand("stats", "Узнать статы"),
-        types.BotCommand("personal_notifications", "вкл/выкл личные уведомления о дне рождения"),
-        types.BotCommand("add_birthday", "Добивить ваш день рождения в базу")
-    ]
+def get_commands_for_set(who_ask: str = 'user') -> list:
+    all_commands = []
+    admin_commands = []
+    is_admin_section = False
+    
+    try:
+        with open('varibles/command_list.txt', 'r', encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                
+                # Проверка на пустые строки
+                if not line:
+                    continue
+                    
+                # Проверка на разделитель
+                if line.startswith('==='):
+                    is_admin_section = True
+                    continue
+                
+                # Проверка на комментарии
+                if line.startswith('#'):
+                    continue
+                
+                parts = line.split(' - ', 1)
+                if len(parts) == 2:
+                    command, description = parts
+                    bot_command = types.BotCommand(command.strip(), description.strip())
+                    
+                    if is_admin_section:
+                        admin_commands.append(bot_command)
+                    else:
+                        all_commands.append(bot_command)
+                else:
+                    print(f"Неправильный формат строки: {line}")
+                    
+    except FileNotFoundError:
+        predlojka_bot.send_message(
+            admin,
+            "Товарищ администратор, тут нюансик такой... Не могу найти файл с командами для бота... Проверьте это как можно скорее!",
+            )
+        return [
+            types.BotCommand("start", "Запустить бота"),
+            types.BotCommand("help", "Помощь"),
+        ]
+    
+    if who_ask == 'user':
+        return all_commands
+    elif who_ask == 'admin':
+        return all_commands + admin_commands
+    else:
+        return all_commands
 
-    admin_commands = [
-        types.BotCommand("send_daily", "Принудиткльно выслать ежедневки"),
-        types.BotCommand("send_personal_daily", "Принудительно выслать личные ежедневки"),
-        types.BotCommand("add_birthday_by_username", "Принудительно добавить ДР пользователю"),
-        types.BotCommand("setcmd", "Установить команды в меню"),
-        types.BotCommand("edit_currency", "Изменить курс валют")
-    ]
 
-    if who_ask == 'user': return default_commands
-    elif who_ask == 'admin': return default_commands + admin_commands
-    else: return default_commands
+def crisis_log(message: str):
+    for i in range(100):
+        print(message)
+
+
+def crisis_tg(message: str):
+    """Отправляет администратору сообщение о критической ошибке"""
+    try:
+        for i in range(10):
+            predlojka_bot.send_message(
+                admin,
+                message,
+                parse_mode='HTML',
+                disable_notification=False
+            )
+    except:
+        crisis_log("🚨 КРИТИЧЕСКИЙ КРИЗИС: БОТ УМЕР И НЕ МОЖЕТ СООБЩИТЬ О КРИЗИСЕ")
 
 
 def backupDB():
@@ -133,11 +180,27 @@ def backupDB():
         """
 
         try:
-            predlojka_bot.send_message(
-                admin,
-                panic_message,
-                parse_mode='HTML',
-                disable_notification=False
-            )
+            crisis_tg(f"{panic_message}")
         except:
-            print("🚨 КРИТИЧЕСКИЙ КРИЗИС: БОТ УМЕР И НЕ МОЖЕТ КРИЧАТЬ О ПОМОЩИ")
+            crisis_log("🚨 КРИТИЧЕСКИЙ КРИЗИС: БОТ УМЕР И НЕ МОЖЕТ КРИЧАТЬ О ПОМОЩИ")
+
+
+def bot_reboot():
+    """Перезапускает бота (на всякий случай, если он зависнет)"""
+    try:
+        predlojka_bot.send_message(
+            backup_chat,
+            "🤖 Бот перезагружается... Если вы видите это сообщение, значит перезагрузка прошла успешно!"
+        )
+    except:
+        
+        crisis_log("🚨 КРИТИЧЕСКИЙ КРИЗИС: БОТ УМЕР И НЕ МОЖЕТ СООБЩИТЬ О ПЕРЕЗАГРУЗКЕ")
+    
+    # Рекурсивный вызов функции для перезапуска бота
+    import os
+    import sys
+    os.execv(sys.executable, ['python'] + sys.argv)
+
+
+if __name__ == "__main__":
+    print(get_commands_for_set('admin'))
