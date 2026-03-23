@@ -1,7 +1,7 @@
 import json
 import threading
 from quickjs import Context
-from config import calendar, predlojka_bot, channel
+# from config import calendar, predlojka_bot, channel  # avoid cyclic import
 
 
 class ImperialCalendar:

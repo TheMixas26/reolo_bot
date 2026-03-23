@@ -35,7 +35,7 @@ scheduler.add_job(send_birthday_congratulation, 'cron', hour=9, minute=30, misfi
 scheduler.add_job(check_achievements, 'interval', minutes=1)
 
 # Планово ребутимся
-scheduler.add_job(bot_reboot, 'cron', hour=0, minute=0, misfire_grace_time=3600)
+# scheduler.add_job(bot_reboot, 'cron', hour=0, minute=0, misfire_grace_time=3600)
 
 # Обновляем команды бота в телеграме раз в день, ну так, чисто на случай
 scheduler.add_job(set_commands, 'cron', hour=0, minute=0, misfire_grace_time=3600)

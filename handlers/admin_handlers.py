@@ -1,7 +1,7 @@
 from config import predlojka_bot, admin, channel
 from telebot import types
 from bank import edit_currency_info
-from utils.utils import get_commads_for_set, backupDB
+from utils.utils import get_commands_for_set, backupDB
 from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications
 from database.sqlite_db import get_all_users
 
@@ -24,19 +24,20 @@ def editing_currency2(message):
 
 
 @predlojka_bot.message_handler(commands=['setcmd'])
-def set_commands(message):
-    if message.from_user.id != admin:
+def set_commands(message=None):
+    if message and message.from_user.id != admin:
         return
     
     scope = types.BotCommandScopeChat(admin)
 
-    predlojka_bot.set_my_commands(get_commads_for_set('user'))
+    predlojka_bot.set_my_commands(get_commands_for_set('user'))
     predlojka_bot.set_my_commands(
-        get_commads_for_set('admin'),
+        get_commands_for_set('admin'),
         scope=scope
     )
 
-    predlojka_bot.reply_to(message, "Команды обновлены!")
+    if message:
+        predlojka_bot.reply_to(message, "Команды обновлены!")
 
 
 
