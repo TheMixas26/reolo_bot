@@ -7,6 +7,16 @@ DB_PATH = Path("database/bot.sqlite3")
 _DB_LOCK = Lock()
 
 
+# TODO: В отдельный игро-конфиг
+rarity_weights = {
+    "C": 60,
+    "UC": 25,
+    "R": 10,
+    "SR": 4,
+    "UR": 1,
+    "L": 0.1
+}
+
 def _get_connection() -> sqlite3.Connection:
     """Создает папку для базы данных, если ее нет, и возвращает соединение с базой данных"""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -16,6 +26,35 @@ def _get_connection() -> sqlite3.Connection:
 
 
 _conn = _get_connection()
+
+
+def _seed_cards_if_empty() -> None:
+    cur = _conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM cards")
+    if cur.fetchone()[0] != 0:
+        return
+
+    cards_data = [
+        (1, "Дуэлянт", "R", 200, 200, 150, "MORTAL", "Верные подписчики", None, None, "Самая популярная карта в дуэлях! Эта подписчица стабильно радует нас экзистенциальными вопросами о мироздании."),
+        (2, "Сонный балбес", "R", 200, 100, 300, "MORTAL", "Верные подписчики", None, None, "Серый Кардинал Имперского Вестника. Всегда читает посты, всегда смотрит комментарии. Всегда рядом)"),
+        (3, "Татьяна", "R", 600, 100, 350, "MORTAL", "Верные подписчики", None, None, None),
+        (4, "Варя (Предложка)", "UR", 1000, 1000, 1111, "MORTAL", "Админы всея канала", None, None, "Именно она заботливо передаёт ваши посты администрации канала."),
+        (5, "Just_Nika", "UR", 1250, 1250, 900, "MORTAL", "Админы всея канала", None, None, None),
+        (6, "Улитка на склоне", "UR", 500, 500, 2500, "MORTAL", "Админы всея канала", None, None, None),
+        (7, "Амодерни Боровски", "UR", 1200, 1200, 1000, "COUNCIL", "Админы всея канала", None, None, None),
+        (8, "Амодерни Боровски", "L", 3000, 3000, 2500, "COUNCIL", "Высший Совет", None, None, None),
+        (9, "Генрих Многорукий", "L", 5000, 5000, 1000, "COUNCIL", "Высший Совет", None, None, None),
+        (10, "Фелония Ламберт", "L", 2500, 2500, 3000, "COUNCIL", "Высший Совет", None, None, None),
+        (11, "ПАША", "SP", 700, 700, 800, "MORTAL", "Голосование за имя Предложки", None, None, "Публичное Агенство Шумных Анонсов - именно так могли звать Предложку."),
+    ]
+    cur.executemany(
+        """
+        INSERT INTO cards (id, name, rarity, hp, atk, def, type, category, ability, image, desc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        cards_data,
+    )
+    _conn.commit()
 
 
 def init_db(additional_command = "") -> None:
@@ -69,9 +108,32 @@ def init_db(additional_command = "") -> None:
                 FOREIGN KEY (achievement_id) REFERENCES achievements(id)
             );
 
+            CREATE TABLE IF NOT EXISTS cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                rarity TEXT NOT NULL,
+                hp INTEGER NOT NULL,
+                atk INTEGER NOT NULL,
+                def INTEGER NOT NULL,
+                type TEXT,
+                category TEXT,
+                ability TEXT,
+                image TEXT,
+                desc TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS inventory (
+                user_id INTEGER NOT NULL,
+                card_id INTEGER NOT NULL,
+                amount INTEGER DEFAULT 1,
+                PRIMARY KEY (user_id, card_id)
+            );
+
             {additional_command}
             """
         )
+        _seed_cards_if_empty()
+
         _conn.commit()
 
 
@@ -336,6 +398,73 @@ def get_user_achievements(user_id: int) -> list[dict]:
     ).fetchall()
     return [dict(row) for row in rows]
 
+# -=-=-=-=-=-=- Cards & Inventory -=-=-=-=-=-=-
+
+
+
+# ----- Функции для работы с картами -----
+def get_all_cards():
+    """Возвращает список всех карт."""
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        cur.execute("SELECT * FROM cards ORDER BY id")
+        return [dict(row) for row in cur.fetchall()]
+
+def get_card_by_id(card_id: int):
+    """Возвращает карту по id."""
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        cur.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+def get_cards_by_rarity(rarity: str):
+    """Возвращает карты заданной редкости."""
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        cur.execute("SELECT * FROM cards WHERE rarity = ?", (rarity,))
+        return [dict(row) for row in cur.fetchall()]
+
+
+
+# ----- Инвентарь -----
+def add_to_inventory(user_id: int, card_id: int, amount: int = 1) -> None:
+    """Добавляет карту в инвентарь пользователя."""
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        cur.execute("""
+            INSERT INTO inventory (user_id, card_id, amount)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, card_id) DO UPDATE SET amount = amount + excluded.amount
+        """, (user_id, card_id, amount))
+        _conn.commit()
+
+def get_inventory(user_id: int):
+    """Возвращает инвентарь пользователя с данными карт."""
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        cur.execute("""
+            SELECT c.*, i.amount
+            FROM inventory i
+            JOIN cards c ON i.card_id = c.id
+            WHERE i.user_id = ?
+        """, (user_id,))
+        return [dict(row) for row in cur.fetchall()]
+
+def roll_card(user_id: int):
+    """Случайная карта по редкости, добавляет в инвентарь."""
+    import random
+    rarities = list(rarity_weights.keys())
+    weights = list(rarity_weights.values())
+    rarity = random.choices(rarities, weights=weights, k=1)[0]
+
+    cards = get_cards_by_rarity(rarity)
+    if not cards:
+        cards = get_all_cards()
+    card = random.choice(cards)
+
+    add_to_inventory(user_id, card["id"])
+    return card
 
 
 
