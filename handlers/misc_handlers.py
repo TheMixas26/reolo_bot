@@ -3,18 +3,36 @@ from config import predlojka_bot, admin, channel
 
 @predlojka_bot.message_handler(commands=['send_smth'])
 def handle_send_personal_daily(message):
-
-    text_ls = "Здравствуйте, ♡! Кажется, у вас сегодня день рождения... Если конечно мои подвальные записи не врут)\n\nМы всей Империей вас поздравляем! +1000 соуиального рейтинга и бесчисленное вам уважение!\n\nСпасибо вам за все ваши посты в Предложке (то есть, отпрвленные мне), мне бесконечно приятно, что наш канал живёт благодаря таким пользователям, как вы! С праздником вас, ♡!"
-
-    text_ch = "Дорогие подписчкики! Сегодня случилось неверотяное!!! Сегодня день рождения у нашего дорогого подпчискика Татьяны!!!\n\nВы наверняка видели посты от Татьяны!)) Она очень преданный подписчик!\n\nДавайте дружно поздравим её в комментариях!!!\n\nС праздником, Татьяна!"
-
+    # Проверяем, что отправитель — админ
     if message.from_user.id != admin:
         return
+    command_text = message.text.replace('/send_smth', '').strip()
+
     try:
-        predlojka_bot.send_message(1286274067, text_ls)
-        # predlojka_bot.send_message(channel, text_ch)
+        user_id_str, text_to_send = command_text.split('|', 1)  
+        user_id = int(user_id_str.strip())
+        text_to_send = text_to_send.strip()
+    except ValueError:
+        predlojka_bot.reply_to(message, "Ошибка формата. Используйте: /send_smth ID|текст сообщения")
+        return
     except Exception as e:
-        print(e)
+        predlojka_bot.reply_to(message, f"Произошла ошибка: {e}")
+        return
+
+    try:
+        predlojka_bot.send_message(user_id, text_to_send)
+        # Подтверждаем успешную отправку
+        predlojka_bot.reply_to(
+            message,
+            f"Сообщение успешно отправлено получателю с ID {user_id}."
+        )
+    except Exception as e:
+       
+        predlojka_bot.reply_to(
+            message,
+            f"Не удалось отправить сообщение получателю с ID {user_id}. Ошибка: {e}"
+        )
+
 
 
 
