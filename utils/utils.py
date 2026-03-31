@@ -1,7 +1,13 @@
 from random import choice, random
-from telebot import types
-from config import predlojka_bot, admin, backup_chat
+from pathlib import Path
 from datetime import datetime
+
+from telebot import types
+
+from analytics.stats import EVENTS_LOG_PATH, write_summary_report
+from config import predlojka_bot, admin, backup_chat
+
+COMMANDS_FILE_PATH = Path("varibles/command_list.txt")
 
 def thx_for_message(user_name: str, mes_type: str) -> str:
     """Генерирует рандомный ответ в зависимости от типа сообщения (вопрос или утверждение)"""
@@ -72,57 +78,56 @@ def thx_for_message(user_name: str, mes_type: str) -> str:
     elif mes_type == '?': return choice(variants_q)
 
 
-def get_commands_for_set(who_ask: str = 'user') -> list:
-    all_commands = []
-    admin_commands = []
-    is_admin_section = False
-    
+def _normalize_section_name(raw_name: str) -> str:
+    return raw_name.strip().strip("[]").strip().lower()
+
+
+def _load_command_registry() -> dict[str, list[types.BotCommand]]:
+    registry: dict[str, list[types.BotCommand]] = {}
+    current_section = "predlojka_user"
+
     try:
-        with open('varibles/command_list.txt', 'r', encoding='utf-8') as file:
-            for line in file:
-                line = line.strip()
-                
-                # Проверка на пустые строки
-                if not line:
+        with COMMANDS_FILE_PATH.open("r", encoding="utf-8") as file:
+            for raw_line in file:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
                     continue
-                    
-                # Проверка на разделитель
-                if line.startswith('==='):
-                    is_admin_section = True
+
+                if line.startswith("[") and line.endswith("]"):
+                    current_section = _normalize_section_name(line)
+                    registry.setdefault(current_section, [])
                     continue
-                
-                # Проверка на комментарии
-                if line.startswith('#'):
-                    continue
-                
-                parts = line.split(' - ', 1)
-                if len(parts) == 2:
-                    command, description = parts
-                    bot_command = types.BotCommand(command.strip(), description.strip())
-                    
-                    if is_admin_section:
-                        admin_commands.append(bot_command)
-                    else:
-                        all_commands.append(bot_command)
-                else:
+
+                parts = line.split(" - ", 1)
+                if len(parts) != 2:
                     print(f"Неправильный формат строки: {line}")
-                    
+                    continue
+
+                command, description = parts
+                registry.setdefault(current_section, []).append(
+                    types.BotCommand(command.strip(), description.strip())
+                )
+
     except FileNotFoundError:
         predlojka_bot.send_message(
             admin,
-            "Товарищ администратор, тут нюансик такой... Не могу найти файл с командами для бота... Проверьте это как можно скорее!",
-            )
-        return [
+            "Товарищ администратор, тут нюансик такой... Я не смогла найти файл с командами для бота... Проверьте это как можно скорее! (ಥ﹏ಥ)",
+        )
+        registry["predlojka_user"] = [
             types.BotCommand("start", "Запустить бота"),
             types.BotCommand("help", "Помощь"),
         ]
-    
-    if who_ask == 'user':
-        return all_commands
-    elif who_ask == 'admin':
-        return all_commands + admin_commands
-    else:
-        return all_commands
+
+    return registry
+
+
+def get_commands_for_set(bot_name: str = "predlojka", include_admin: bool = False) -> list[types.BotCommand]:
+    registry = _load_command_registry()
+    user_section = registry.get(f"{bot_name}_user", [])
+    if not include_admin:
+        return user_section
+    admin_section = registry.get(f"{bot_name}_admin", [])
+    return user_section + admin_section
 
 
 def crisis_log(message: str):
@@ -145,20 +150,40 @@ def crisis_tg(message: str):
 
 
 def backupDB():
-    """Создаёт резервную копию базы данных и отправляет её админу в Телеграме"""
-    try:
-        date_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
-        filename = f"db_backup_{date_str}.sqlite3"
-
-        with open("database/bot.sqlite3", mode='rb') as f:
+    """Создаёт резервную копию базы данных и аналитики и отправляет её в чат бэкапов."""
+    def send_backup_file(path: str | Path, visible_name: str, caption: str) -> None:
+        with open(path, mode='rb') as file:
             predlojka_bot.send_document(
-                backup_chat, 
-                f, 
-                visible_file_name=filename,
-                caption=f"📦 Ежедневная порция данных за {date_str}",
+                backup_chat,
+                file,
+                visible_file_name=visible_name,
+                caption=caption,
                 disable_notification=True
             )
-        
+
+    try:
+        date_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        summary_path = write_summary_report()
+
+        send_backup_file(
+            "database/bot.sqlite3",
+            f"db_backup_{date_str}.sqlite3",
+            f"📦 Ежедневная порция данных за {date_str}",
+        )
+
+        if EVENTS_LOG_PATH.exists():
+            send_backup_file(
+                EVENTS_LOG_PATH,
+                f"bot_events_{date_str}.jsonl",
+                f"📊 Сырой лог статистики за {date_str}",
+            )
+
+        if summary_path.exists():
+            send_backup_file(
+                summary_path,
+                f"bot_stats_summary_{date_str}.txt",
+                f"📈 Сводка аналитики за {date_str}",
+            )
         
     except Exception as e:
         # ВСЁ ПРОПАЛО, ШЕФ!!!
@@ -203,4 +228,4 @@ def bot_reboot():
 
 
 if __name__ == "__main__":
-    print(get_commands_for_set('admin'))
+    print(get_commands_for_set("predlojka", include_admin=True))

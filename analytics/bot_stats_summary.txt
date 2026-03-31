@@ -1,0 +1,60 @@
+=== Сводка аналитики бота ===
+Сгенерировано: 2026-03-26T15:00:00.007463+00:00
+Всего событий: 30
+
+Активность по ботам
+1. predlojka — 14
+2. rpg — 12
+3. system — 4
+
+События по типам
+1. command_used — 10
+2. bot_started — 4
+3. commands_synced — 2
+4. question_approved — 2
+5. question_submitted — 2
+6. system_bootstrap — 2
+7. achievement_granted_auto — 1
+8. birthday_daily_sent — 1
+9. birthday_personal_notifications_sent — 1
+10. card_event_created — 1
+
+Уникальные пользователи по ботам:
+- predlojka: 1
+- rpg: 1
+
+Команды бота predlojka
+1. changelog — 1
+2. setcmd — 1
+
+Команды бота rpg
+1. events — 2
+2. cg_create_event — 1
+3. help — 1
+4. inventory — 1
+5. packs — 1
+6. start — 1
+7. team_battle — 1
+
+Самые активные user_id в боте predlojka
+1. 1282466718 — 10
+
+Самые активные user_id в боте rpg
+1. 1282466718 — 10
+
+Частота выпадения карт: нет данных
+
+Частота выпадения по редкости: нет данных
+
+Банк: переводов 0, объём 0 IB
+
+Предложка:
+- post_approved: 1
+- post_submitted: 1
+- question_answer_requested: 1
+- question_approved: 2
+- question_submitted: 2
+
+Дни рождения:
+- birthday_daily_sent: 1
+- birthday_personal_notifications_sent: 2

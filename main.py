@@ -1,4 +1,10 @@
-from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, predlojka_handlers, bank_handlers, rpg_handlers
+"""Точка входа в бота, запускайте именно этот файл."""
+
+from analytics.stats import log_event
+from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, predlojka_handlers, bank_handlers
+from handlers.card_handlers import callbacks as card_callbacks
+from handlers.card_handlers import commands as card_commands
+
 import logging
 from threading import Thread
 import time
@@ -21,10 +27,12 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-def run_bot(bot_instance, bot_name):
+def run_bot(bot_instance, bot_name, analytics_bot_name):
     """Запускает бота в отдельном потоке"""
     logger.info(f"🚀 Запуск {bot_name}...")
-    logger.info(f"ID бота {bot_name}: {bot_instance.get_me().id}")
+    bot_info = bot_instance.get_me()
+    logger.info(f"ID бота {bot_name}: {bot_info.id}")
+    log_event("bot_started", bot=analytics_bot_name, metadata={"telegram_bot_id": bot_info.id, "display_name": bot_name})
     
     try:
         # ВАЖНО: используем infinity_polling для корректной работы callback-запросов
@@ -36,8 +44,10 @@ def run_bot(bot_instance, bot_name):
         )
     except Exception as e:
         logger.error(f"{bot_name} упал: {e}", exc_info=True)
+        log_event("bot_crashed", bot=analytics_bot_name, metadata={"display_name": bot_name, "error": str(e)[:300]})
         time.sleep(10)
-        run_bot(bot_instance, bot_name)  # рекурсивный перезапуск
+        log_event("bot_restart_scheduled", bot=analytics_bot_name, metadata={"display_name": bot_name})
+        run_bot(bot_instance, bot_name, analytics_bot_name)  # рекурсивный перезапуск
 
 if __name__ == "__main__":
     # Очищаем лог-файл
@@ -45,28 +55,32 @@ if __name__ == "__main__":
         f.write("=== Новая сессия ===\n")
     
     logger.info("⚠️ ЗАПУСК БОТА В DEBUG MODE!!!!") if DEBUG_MODE else logger.info("🎮 Запускаю всех ботов...") 
+    log_event("system_bootstrap", bot="system", metadata={"debug_mode": DEBUG_MODE})
     
     # Запускаем каждого бота в отдельном потоке
     threads = []
     
     # Предложка
-    t1 = Thread(target=run_bot, args=(predlojka_bot, "Предложка"), daemon=True)
+    t1 = Thread(target=run_bot, args=(predlojka_bot, "Предложка", "predlojka"), daemon=True)
     t1.start()
     threads.append(t1)
     
+    
+    # RPG
+    t2 = Thread(target=run_bot, args=(rpg_bot, "RPG", "rpg"), daemon=True)
+    t2.start()
+    threads.append(t2)
+
     if DEBUG_MODE:
         pass
-
+        
     else:
         # Банк
-        t2 = Thread(target=run_bot, args=(bank_bot, "Банк"), daemon=True)
-        t2.start()
-        threads.append(t2)
-        
-        # RPG
-        t3 = Thread(target=run_bot, args=(rpg_bot, "RPG"), daemon=True)
+        t3 = Thread(target=run_bot, args=(bank_bot, "Банк", "bank"), daemon=True)
         t3.start()
         threads.append(t3)
+        
+        
     
     logger.info("✅ Все боты запущены. Ожидание сообщений...")
     

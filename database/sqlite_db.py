@@ -2,20 +2,10 @@ import json
 import sqlite3
 from pathlib import Path
 from threading import Lock
+from card_game.catalog import CARD_DEFINITIONS, PACK_DEFINITIONS, get_rarity_label, sort_cards
 
 DB_PATH = Path("database/bot.sqlite3")
 _DB_LOCK = Lock()
-
-
-# TODO: В отдельный игро-конфиг
-rarity_weights = {
-    "C": 60,
-    "UC": 25,
-    "R": 10,
-    "SR": 4,
-    "UR": 1,
-    "L": 0.1
-}
 
 def _get_connection() -> sqlite3.Connection:
     """Создает папку для базы данных, если ее нет, и возвращает соединение с базой данных"""
@@ -30,29 +20,24 @@ _conn = _get_connection()
 
 def _seed_cards_if_empty() -> None:
     cur = _conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM cards")
-    if cur.fetchone()[0] != 0:
-        return
-
-    cards_data = [
-        (1, "Дуэлянт", "R", 200, 200, 150, "MORTAL", "Верные подписчики", None, None, "Самая популярная карта в дуэлях! Эта подписчица стабильно радует нас экзистенциальными вопросами о мироздании."),
-        (2, "Сонный балбес", "R", 200, 100, 300, "MORTAL", "Верные подписчики", None, None, "Серый Кардинал Имперского Вестника. Всегда читает посты, всегда смотрит комментарии. Всегда рядом)"),
-        (3, "Татьяна", "R", 600, 100, 350, "MORTAL", "Верные подписчики", None, None, None),
-        (4, "Варя (Предложка)", "UR", 1000, 1000, 1111, "MORTAL", "Админы всея канала", None, None, "Именно она заботливо передаёт ваши посты администрации канала."),
-        (5, "Just_Nika", "UR", 1250, 1250, 900, "MORTAL", "Админы всея канала", None, None, None),
-        (6, "Улитка на склоне", "UR", 500, 500, 2500, "MORTAL", "Админы всея канала", None, None, None),
-        (7, "Амодерни Боровски", "UR", 1200, 1200, 1000, "COUNCIL", "Админы всея канала", None, None, None),
-        (8, "Амодерни Боровски", "L", 3000, 3000, 2500, "COUNCIL", "Высший Совет", None, None, None),
-        (9, "Генрих Многорукий", "L", 5000, 5000, 1000, "COUNCIL", "Высший Совет", None, None, None),
-        (10, "Фелония Ламберт", "L", 2500, 2500, 3000, "COUNCIL", "Высший Совет", None, None, None),
-        (11, "ПАША", "SP", 700, 700, 800, "MORTAL", "Голосование за имя Предложки", None, None, "Публичное Агенство Шумных Анонсов - именно так могли звать Предложку."),
-    ]
     cur.executemany(
         """
-        INSERT INTO cards (id, name, rarity, hp, atk, def, type, category, ability, image, desc)
+        INSERT OR IGNORE INTO cards (id, name, rarity, hp, atk, def, type, category, ability, image, desc)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        cards_data,
+        CARD_DEFINITIONS,
+    )
+    _conn.commit()
+
+
+def _seed_packs_if_empty() -> None:
+    cur = _conn.cursor()
+    cur.executemany(
+        """
+        INSERT OR IGNORE INTO card_packs (name, price, description, is_active)
+        VALUES (?, ?, ?, 1)
+        """,
+        PACK_DEFINITIONS,
     )
     _conn.commit()
 
@@ -122,6 +107,14 @@ def init_db(additional_command = "") -> None:
                 desc TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS card_packs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                price INTEGER NOT NULL DEFAULT 0,
+                description TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1
+            );
+
             CREATE TABLE IF NOT EXISTS inventory (
                 user_id INTEGER NOT NULL,
                 card_id INTEGER NOT NULL,
@@ -129,10 +122,28 @@ def init_db(additional_command = "") -> None:
                 PRIMARY KEY (user_id, card_id)
             );
 
+            CREATE TABLE IF NOT EXISTS card_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                reward INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                closed_at INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS card_event_rewards (
+                event_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                rewarded_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                PRIMARY KEY (event_id, user_id)
+            );
+
             {additional_command}
             """
         )
         _seed_cards_if_empty()
+        _seed_packs_if_empty()
 
         _conn.commit()
 
@@ -224,6 +235,16 @@ def set_balance(user_id: int, balance: float) -> None:
     with _DB_LOCK:
         _conn.execute("UPDATE user_accounts SET balance = ? WHERE user_id = ?", (balance, user_id))
         _conn.commit()
+
+
+def add_balance(user_id: int, amount: float) -> float:
+    """Изменяет баланс пользователя на amount и возвращает новое значение."""
+    with _DB_LOCK:
+        current_balance = get_balance(user_id)
+        new_balance = current_balance + amount
+        _conn.execute("UPDATE user_accounts SET balance = ? WHERE user_id = ?", (new_balance, user_id))
+        _conn.commit()
+        return new_balance
 
 
 # ---- birthdays ----
@@ -328,12 +349,19 @@ def get_all_achievements() -> list[dict]:
     return [dict(row) for row in rows]
 
 
-# !!! Какого лешего эта функция делает??? У нас же код должен быть уникальным, зачем возвращать список??? 
-# TODO: Починить архитектуру ачивок
+def get_achievement_by_code(code: str) -> dict | None:
+    """Возвращает одно достижение по уникальному коду или None."""
+    row = _conn.execute(
+        "SELECT id, code, name, description FROM achievements WHERE code = ?",
+        (code,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def get_achievements_by_code(code: str) -> list[dict]:
-    """Возвращает список достижений, соответствующих заданному коду. Если достижений с таким кодом нет, возвращает пустой список"""
-    rows = _conn.execute("SELECT id, code, name, description FROM achievements WHERE code = ?", (code,)).fetchall()
-    return [dict(row) for row in rows]
+    """Совместимость со старым API: возвращает список из одного достижения либо пустой список."""
+    achievement = get_achievement_by_code(code)
+    return [achievement] if achievement else []
 
 def add_achievement(code: str, name: str, description: str) -> None:
     """Создает новое достижение с заданным кодом, именем и описанием. Если достижение с таким кодом уже существует... ничего не делает"""
@@ -408,7 +436,7 @@ def get_all_cards():
     with _DB_LOCK:
         cur = _conn.cursor()
         cur.execute("SELECT * FROM cards ORDER BY id")
-        return [dict(row) for row in cur.fetchall()]
+        return sort_cards([dict(row) for row in cur.fetchall()])
 
 def get_card_by_id(card_id: int):
     """Возвращает карту по id."""
@@ -422,8 +450,91 @@ def get_cards_by_rarity(rarity: str):
     """Возвращает карты заданной редкости."""
     with _DB_LOCK:
         cur = _conn.cursor()
-        cur.execute("SELECT * FROM cards WHERE rarity = ?", (rarity,))
+        rarity_label = get_rarity_label(rarity)
+        cur.execute(
+            """
+            SELECT * FROM cards
+            WHERE rarity = ? OR rarity = ? OR rarity LIKE ?
+            """,
+            (rarity, rarity_label, f"%-{rarity_label}"),
+        )
+        return sort_cards([dict(row) for row in cur.fetchall()])
+
+
+def get_cards_by_category(category: str):
+    """Возвращает карты из указанного пака/категории."""
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        cur.execute("SELECT * FROM cards WHERE category = ? ORDER BY id", (category,))
+        return sort_cards([dict(row) for row in cur.fetchall()])
+
+
+def get_pack_names() -> list[str]:
+    """Возвращает список всех доступных паков."""
+    return [pack["name"] for pack in get_all_packs(active_only=True)]
+
+
+def get_all_packs(active_only: bool = False) -> list[dict]:
+    """Возвращает список всех паков."""
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        if active_only:
+            cur.execute("SELECT * FROM card_packs WHERE is_active = 1 ORDER BY price, name")
+        else:
+            cur.execute("SELECT * FROM card_packs ORDER BY is_active DESC, price, name")
         return [dict(row) for row in cur.fetchall()]
+
+
+def get_pack_by_id(pack_id: int) -> dict | None:
+    with _DB_LOCK:
+        row = _conn.execute("SELECT * FROM card_packs WHERE id = ?", (pack_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def get_pack_by_name(pack_name: str) -> dict | None:
+    with _DB_LOCK:
+        row = _conn.execute("SELECT * FROM card_packs WHERE name = ?", (pack_name,)).fetchone()
+        return dict(row) if row else None
+
+
+def upsert_pack(name: str, price: int, description: str | None = None, is_active: bool = True) -> None:
+    with _DB_LOCK:
+        _conn.execute(
+            """
+            INSERT INTO card_packs(name, price, description, is_active)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                price = excluded.price,
+                description = excluded.description,
+                is_active = excluded.is_active
+            """,
+            (name, price, description, 1 if is_active else 0),
+        )
+        _conn.commit()
+
+
+def update_pack(pack_id: int, *, name: str | None = None, price: int | None = None, description: str | None = None, is_active: bool | None = None) -> None:
+    pack = get_pack_by_id(pack_id)
+    if pack is None:
+        raise ValueError("Пак не найден.")
+
+    new_name = name if name is not None else pack["name"]
+    new_price = price if price is not None else pack["price"]
+    new_description = description if description is not None else pack["description"]
+    new_active = (1 if is_active else 0) if is_active is not None else pack["is_active"]
+
+    with _DB_LOCK:
+        _conn.execute(
+            """
+            UPDATE card_packs
+            SET name = ?, price = ?, description = ?, is_active = ?
+            WHERE id = ?
+            """,
+            (new_name, new_price, new_description, new_active, pack_id),
+        )
+        if new_name != pack["name"]:
+            _conn.execute("UPDATE cards SET category = ? WHERE category = ?", (new_name, pack["name"]))
+        _conn.commit()
 
 
 
@@ -449,23 +560,132 @@ def get_inventory(user_id: int):
             JOIN cards c ON i.card_id = c.id
             WHERE i.user_id = ?
         """, (user_id,))
+        return sort_cards([dict(row) for row in cur.fetchall()])
+
+
+def add_card(card_data: dict) -> int:
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO cards (name, rarity, hp, atk, def, type, category, ability, image, desc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                card_data["name"],
+                card_data["rarity"],
+                card_data["hp"],
+                card_data["atk"],
+                card_data["def"],
+                card_data.get("type"),
+                card_data.get("category"),
+                card_data.get("ability"),
+                card_data.get("image"),
+                card_data.get("desc"),
+            ),
+        )
+        _conn.commit()
+        return int(cur.lastrowid)
+
+
+def update_card(card_id: int, card_data: dict) -> None:
+    card = get_card_by_id(card_id)
+    if card is None:
+        raise ValueError("Карта не найдена.")
+
+    merged = {**card, **card_data}
+    with _DB_LOCK:
+        _conn.execute(
+            """
+            UPDATE cards
+            SET name = ?, rarity = ?, hp = ?, atk = ?, def = ?, type = ?, category = ?, ability = ?, image = ?, desc = ?
+            WHERE id = ?
+            """,
+            (
+                merged["name"],
+                merged["rarity"],
+                merged["hp"],
+                merged["atk"],
+                merged["def"],
+                merged.get("type"),
+                merged.get("category"),
+                merged.get("ability"),
+                merged.get("image"),
+                merged.get("desc"),
+                card_id,
+            ),
+        )
+        _conn.commit()
+
+
+def create_card_event(title: str, reward: int, description: str | None = None) -> int:
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO card_events(title, description, reward, status)
+            VALUES (?, ?, ?, 'active')
+            """,
+            (title, description, reward),
+        )
+        _conn.commit()
+        return int(cur.lastrowid)
+
+
+def get_card_event(event_id: int) -> dict | None:
+    row = _conn.execute("SELECT * FROM card_events WHERE id = ?", (event_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_card_events(status: str | None = None) -> list[dict]:
+    with _DB_LOCK:
+        cur = _conn.cursor()
+        if status is None:
+            cur.execute("SELECT * FROM card_events ORDER BY status = 'active' DESC, id DESC")
+        else:
+            cur.execute("SELECT * FROM card_events WHERE status = ? ORDER BY id DESC", (status,))
         return [dict(row) for row in cur.fetchall()]
 
-def roll_card(user_id: int):
-    """Случайная карта по редкости, добавляет в инвентарь."""
-    import random
-    rarities = list(rarity_weights.keys())
-    weights = list(rarity_weights.values())
-    rarity = random.choices(rarities, weights=weights, k=1)[0]
 
-    cards = get_cards_by_rarity(rarity)
-    if not cards:
-        cards = get_all_cards()
-    card = random.choice(cards)
+def close_card_event(event_id: int) -> None:
+    with _DB_LOCK:
+        _conn.execute(
+            """
+            UPDATE card_events
+            SET status = 'closed', closed_at = strftime('%s', 'now')
+            WHERE id = ?
+            """,
+            (event_id,),
+        )
+        _conn.commit()
 
-    add_to_inventory(user_id, card["id"])
-    return card
 
+def reward_card_event_participant(event_id: int, user_id: int) -> tuple[bool, int]:
+    event = get_card_event(event_id)
+    if event is None:
+        raise ValueError("Ивент не найден.")
+    if event["status"] != "active":
+        raise ValueError("Ивент уже закрыт.")
+
+    with _DB_LOCK:
+        existing = _conn.execute(
+            "SELECT 1 FROM card_event_rewards WHERE event_id = ? AND user_id = ?",
+            (event_id, user_id),
+        ).fetchone()
+        if existing is not None:
+            return False, int(event["reward"])
+
+        current_balance = get_balance(user_id)
+        _conn.execute(
+            "INSERT INTO card_event_rewards(event_id, user_id) VALUES (?, ?)",
+            (event_id, user_id),
+        )
+        _conn.execute(
+            "UPDATE user_accounts SET balance = ? WHERE user_id = ?",
+            (current_balance + event["reward"], user_id),
+        )
+        _conn.commit()
+        return True, int(event["reward"])
 
 
 init_db()

@@ -1,13 +1,58 @@
 from config import predlojka_bot, chat_mishas_den, admin, channel
+from analytics.stats import log_event
 from database.sqlite_db import (
     upsert_birthday,
     get_all_birthdays as fetch_all_birthdays,
     update_birthday_name,
 )
 from datetime import datetime, timedelta
-from random import randint
+from random import choice, randint
 
 BIRTHDAY_TABLE = "birthdays"
+
+PERSONAL_BIRTHDAY_TEMPLATES = [
+    (
+        "Здравствуйте, {name}! Сегодня ваш день рождения, а значит у Империи есть официальный повод поднять бокалы за ваше здоровье!\n\n"
+        "Спасибо вам за участие в жизни канала, за внимание к Предложке и за само ваше присутствие здесь. "
+        "Пусть впереди будет побольше тёплых людей, удачных дней и приятных сюрпризов. С праздником!"
+    ),
+    (
+        "{name}, подвальные архивы не соврали: сегодня действительно ваш день рождения!\n\n"
+        "От всей Империи поздравляю вас с этим днём. Желаю спокойствия, сил, хороших новостей и множества поводов улыбаться. "
+        "Спасибо, что вы с нами!"
+    ),
+    (
+        "С праздником, {name}!\n\n"
+        "Сегодня ваш день, и это отличный повод напомнить: мы очень ценим вас как подписчика и как часть нашего сообщества. "
+        "Пусть этот год принесёт вам побольше радости, вдохновения и приятных историй."
+    ),
+]
+
+PUBLIC_BIRTHDAY_TEMPLATES = [
+    (
+        "Товарищи подписчики! Сегодня у нас важный повод для радости.\n\n"
+        "🎉 День рождения отмечает {name}! Давайте поздравим его в комментариях, пожелаем всего самого доброго, "
+        "спокойного и счастливого. С праздником!"
+    ),
+    (
+        "Империя объявляет праздничную тревогу!\n\n"
+        "🎂 Сегодня день рождения у нашего подписчика {name}. Желаем ему здоровья, удачи, тёплых людей рядом и "
+        "побольше хороших событий. Поздравляем!"
+    ),
+    (
+        "Сегодня не обычный день.\n\n"
+        "🎉 Наш дорогой подписчик {name} празднует день рождения! Присоединяйтесь к поздравлениям и подарите человеку "
+        "немного добрых слов в комментариях."
+    ),
+]
+
+
+def _build_personal_congratulation(name: str) -> str:
+    return choice(PERSONAL_BIRTHDAY_TEMPLATES).format(name=name)
+
+
+def _build_public_congratulation(name: str) -> str:
+    return choice(PUBLIC_BIRTHDAY_TEMPLATES).format(name=name)
 
 
 
@@ -18,7 +63,13 @@ def send_daily_birthdays():
     try:
         text = format_birthdays_list()
         predlojka_bot.send_message(chat_mishas_den, text)
-        predlojka_bot.send_message(admin, "Уведомление направлено!")
+        predlojka_bot.send_message(admin, "Ежедневное уведомление с днями рождений направлено!")
+        log_event(
+            "birthday_daily_sent",
+            bot="predlojka",
+            chat_id=chat_mishas_den,
+            metadata={"count": 1},
+        )
     except Exception as e:
         print(f"Ошибка при отправке дней рождений: {e}")
 
@@ -154,6 +205,7 @@ def send_personal_birthday_notifications() -> None:
     Отправляет каждому пользователю личное уведомление о его дне рождения.
     """
     bdays = get_all_birthdays()
+    sent_count = 0
     for b in bdays:
         if not b.get("personal_notify"):
             continue
@@ -173,13 +225,23 @@ def send_personal_birthday_notifications() -> None:
         try:
             fin_text = f"{first_text}\n\n{subscribers_list}"
             predlojka_bot.send_message(user_id, fin_text)
+            sent_count += 1
         except Exception as e:
             print(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}")
+
+    if sent_count:
+        log_event(
+            "birthday_personal_notifications_sent",
+            bot="predlojka",
+            metadata={"count": sent_count},
+        )
 
 
 def send_birthday_congratulation() -> None:
     """Отправляет поздравление с днем рождения пользователю."""
     bdays = get_all_birthdays()
+    dm_sent = 0
+    channel_sent = 0
     for b in bdays:
         user_id = b.get("user_id")
         name = b.get("name")
@@ -187,19 +249,31 @@ def send_birthday_congratulation() -> None:
         month = b.get("month")
         days_left = days_until_birthday(day, month)
         if days_left == 0:
-            
-            # TODO: см строчку ниже
-            # ! Бляха, я не могу сейчас решить вопрос, нет времени, но поздравление должно генерироваться через нейросеть не забыть бы...
-            congratulation_text_dm = f"Здравствуйте, {name}! Кажется, у вас сегодня день рождения... Если конечно мои подвальные записи не врут)\n\nМы всей Империей вас поздравляем! +1000 соуиального рейтинга и бесчисленное вам уважение!\n\nСпасибо вам за все ваши посты в Предложке (если вы конечно отправляли), мне бесконечно приятно, что наш канал живёт благодаря таким пользователям, как вы! С праздником вас, {name}!"
-
-            congratulation_text_ch = f"Товарищи подписчики! Сегодня не обычный день...\n\n🎉 Сегодня день рождения у нашего дорогого подписчика {name}! Давайте поздравим его в комментариях и пожелаем всего самого лучшего! 🎂\n\n{name}, мы поздравляем вас с днем рождения! Счастья вам, здоровья и успехов! Мы вас обожаем!!!"
+            congratulation_text_dm = _build_personal_congratulation(name)
+            congratulation_text_ch = _build_public_congratulation(name)
 
             try:
                 predlojka_bot.send_message(user_id, congratulation_text_dm)
+                dm_sent += 1
             except Exception as e:
                 print(f"Ошибка личного поздравления для {user_id}: {e}")
 
             try:
                 predlojka_bot.send_message(channel, congratulation_text_ch)
+                channel_sent += 1
             except Exception as e:
                 print(f"Ошибка публичного поздравления для {user_id}: {e}")
+
+    if dm_sent:
+        log_event(
+            "birthday_personal_congratulations_sent",
+            bot="predlojka",
+            metadata={"count": dm_sent},
+        )
+    if channel_sent:
+        log_event(
+            "birthday_channel_congratulations_sent",
+            bot="predlojka",
+            chat_id=channel,
+            metadata={"count": channel_sent},
+        )
