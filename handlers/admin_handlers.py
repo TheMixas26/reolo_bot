@@ -1,10 +1,13 @@
-from config import predlojka_bot, admin, channel, bank_bot, rpg_bot
+from config import predlojka_bot, admin, bank_bot, rpg_bot
 from telebot import types
 from bank import edit_currency_info
 from utils.utils import get_commands_for_set, backupDB
 from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications
 from database.sqlite_db import get_all_users
 from analytics.stats import log_command_usage, log_event
+from posting.models import Platform, PostAuthor, PostOrigin
+from posting.runtime import post_publisher, telegram_adapter
+from posting.services import PostFactory, PostFormatter
 
 @predlojka_bot.message_handler(commands=['edit_currency'])
 def editing_currency(message):
@@ -82,12 +85,16 @@ def handle_fake_post(message):
 
     if message.reply_to_message:
         try:
-            caption = message.reply_to_message.caption or message.reply_to_message.text or ""
-            if caption:
-                predlojka_bot.copy_message(channel, message.chat.id, message.reply_to_message.message_id, caption=caption)
+            post = telegram_adapter.create_raw_post_from_message(message.reply_to_message, append_author_signature=False)
+            outcome = post_publisher.publish_post(
+                post,
+                rendered_text=PostFormatter.compose_publish_text(post),
+                disable_notification=True,
+            )
+            if outcome.has_errors:
+                predlojka_bot.reply_to(message, f"Пост отправлен частично. Ошибки: {'; '.join(outcome.errors.values())}")
             else:
-                predlojka_bot.copy_message(channel, message.chat.id, message.reply_to_message.message_id)
-            predlojka_bot.reply_to(message, "Готово! Переслала отвеченное сообщение в канал)")
+                predlojka_bot.reply_to(message, "Готово! Переслала отвеченное сообщение в канал)")
             log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "reply_copy"})
             return
         except Exception as e:
@@ -101,8 +108,30 @@ def handle_fake_post2(message):
     if message.from_user.id != admin:
         return
     try:
-        predlojka_bot.send_message(channel, message.text)
-        predlojka_bot.send_message(message.chat.id, "Готово! Пост улетел. Удачи с махинациями))) (¬‿¬)")
+        post = PostFactory.create_raw_post(
+            author=PostAuthor(
+                user_id=message.from_user.id,
+                display_name=telegram_adapter.build_display_name(message.from_user),
+                username=getattr(message.from_user, "username", None),
+            ),
+            origin=PostOrigin(
+                platform=Platform.TELEGRAM,
+                chat_id=message.chat.id,
+                user_id=message.from_user.id,
+                message_id=message.message_id,
+            ),
+            text=message.text or "",
+            append_author_signature=False,
+        )
+        outcome = post_publisher.publish_post(
+            post,
+            rendered_text=PostFormatter.compose_publish_text(post),
+            disable_notification=True,
+        )
+        if outcome.has_errors:
+            predlojka_bot.send_message(message.chat.id, f"Пост отправлен частично. Ошибки: {'; '.join(outcome.errors.values())}")
+        else:
+            predlojka_bot.send_message(message.chat.id, "Готово! Пост улетел. Удачи с махинациями))) (¬‿¬)")
         log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "text"})
     except Exception as e:
         predlojka_bot.send_message(message.chat.id, f"(╥﹏╥) Ошибка при отправке поста: {e}")

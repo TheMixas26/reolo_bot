@@ -1,7 +1,8 @@
 import json
 import threading
 from quickjs import Context
-from config import calendar, predlojka_bot, channel  # avoid cyclic import
+from posting.models import Platform
+from posting.services import PostFactory, PostFormatter
 
 
 class ImperialCalendar:
@@ -124,11 +125,24 @@ class ImperialCalendar:
 
 
 def check_imperial_events():
+    from config import calendar, channel
     today_info = calendar.today()
     event_today = today_info.get("event")
     if event_today:
         message = f"Сегодня {today_info['day']} {today_info['month']} {today_info['year']} по Имперскому календарю! Праздник: {event_today} 🎉"
     else:
         message = f"Сегодня {today_info['day']} {today_info['month']} {today_info['year']} по Имперскому календарю. Сегодня нет праздников."
-    
-    predlojka_bot.send_message(channel, message)
+
+    from posting.runtime import post_publisher
+
+    post = PostFactory.create_system_post(
+        platform=Platform.TELEGRAM,
+        destination_id=channel,
+        text=message,
+        display_name="Имперский календарь",
+    )
+    post_publisher.publish_post(
+        post,
+        rendered_text=PostFormatter.compose_publish_text(post),
+        disable_notification=True,
+    )

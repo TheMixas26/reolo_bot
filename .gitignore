@@ -6,6 +6,7 @@ database/db.json
 bot_errors.log
 .code-workspace.code-workspace
 handlers/__pycache__
+handlers/card_handlers/__pycache__
 */__pycache__
 *.sqlite3
 *.jsonl

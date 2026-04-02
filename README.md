@@ -134,6 +134,7 @@
 Проект написан на **Python** и использует:
 
 * `pyTelegramBotAPI (telebot)`
+* адаптеры платформ для публикации (`TelegramAdapter`, `VKAdapter`)
 * **SQLite** для хранения данных
 
 Структура проекта выглядит примерно так:
@@ -141,6 +142,7 @@
 ```
 handlers/                    обработчики Telegram-команд
 handlers/card_handlers/      Telegram-слой карточного бота
+posting/                     общие модели постов, сервисы и адаптеры платформ
 card_game/                   доменная логика карточной игры
 database/sqlite_db.py        работа с SQLite
 utils/                       вспомогательные функции
@@ -236,6 +238,11 @@ location=(55.75, 37.62)
 predlojka_bot = telebot.TeleBot(PREDLOJKA_TOKEN)
 bank_bot = telebot.TeleBot(BANK_TOKEN)
 rpg_bot = telebot.TeleBot(RPG_TOKEN)
+
+VK_TOKEN = ""          # токен сообщества VK
+VK_GROUP_ID = None     # числовой id сообщества, например 123456789
+VK_OWNER_ID = None     # например -123456789 для стены сообщества
+VK_API_VERSION = "5.199"
 
 calendar = ImperialCalendar('utils/imperial_date_generator.js')
 

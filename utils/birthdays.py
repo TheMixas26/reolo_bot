@@ -7,6 +7,8 @@ from database.sqlite_db import (
 )
 from datetime import datetime, timedelta
 from random import choice, randint
+from posting.models import Platform
+from posting.services import PostFactory, PostFormatter
 
 BIRTHDAY_TABLE = "birthdays"
 
@@ -259,7 +261,19 @@ def send_birthday_congratulation() -> None:
                 print(f"Ошибка личного поздравления для {user_id}: {e}")
 
             try:
-                predlojka_bot.send_message(channel, congratulation_text_ch)
+                from posting.runtime import post_publisher
+
+                post = PostFactory.create_system_post(
+                    platform=Platform.TELEGRAM,
+                    destination_id=channel,
+                    text=congratulation_text_ch,
+                    display_name="Империя",
+                )
+                post_publisher.publish_post(
+                    post,
+                    rendered_text=PostFormatter.compose_publish_text(post),
+                    disable_notification=True,
+                )
                 channel_sent += 1
             except Exception as e:
                 print(f"Ошибка публичного поздравления для {user_id}: {e}")
