@@ -1,7 +1,7 @@
 data.py
 config.py
 /__pycache__
-.pyc
+*.pyc
 database/db.json
 bot_errors.log
 .code-workspace.code-workspace

@@ -1,8 +1,7 @@
 import json
 import threading
 from quickjs import Context
-from config import calendar, predlojka_bot, channel  # avoid cyclic import
-
+from config import predlojka_bot, channel
 
 class ImperialCalendar:
     def __init__(self, js_path: str):
@@ -121,6 +120,7 @@ class ImperialCalendar:
             """)
 
 
+calendar = ImperialCalendar('dev/utils/imperial_date_generator.js')
 
 
 def check_imperial_events():

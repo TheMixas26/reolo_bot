@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Lock
 from card_game.catalog import CARD_DEFINITIONS, PACK_DEFINITIONS, get_rarity_label, sort_cards
 
-DB_PATH = Path("database/bot.sqlite3")
+DB_PATH = Path("dev/database/bot.sqlite3")
 _DB_LOCK = Lock()
 
 def _get_connection() -> sqlite3.Connection:
