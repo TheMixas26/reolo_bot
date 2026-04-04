@@ -4,8 +4,9 @@ import pickle
 from pathlib import Path
 
 from analytics.stats import log_event
-from config import bank_bot, commission
+from config import bank_bot
 from database.sqlite_db import get_balance, set_balance, user_exists
+from settings import BANK_TRANSFER_COMMISSION, CURRENCY_NAME_GENITIVE
 
 CURRENCY_INFO_PATH = Path("varibles/currency_info.pickle")
 
@@ -34,7 +35,7 @@ def view_currency_info() -> str:
         currency_info = pickle.load(file)
 
     exchange_rate = currency_info[0] / currency_info[1]
-    return f"{exchange_rate} Имперских батов равняются 1 рублю"
+    return f"{exchange_rate} {CURRENCY_NAME_GENITIVE.lower()} равняются 1 рублю"
 
 
 def get_money(message, amount: int) -> None:
@@ -50,7 +51,7 @@ def get_money(message, amount: int) -> None:
             bank_bot.reply_to(message, "Не достаточно средств")
             return
 
-        commission_amount = amount * commission
+        commission_amount = amount * BANK_TRANSFER_COMMISSION
         credited_amount = amount - commission_amount
         set_balance(to_user_id, get_balance(to_user_id) + credited_amount)
         set_balance(sender_id, sender_balance - amount)

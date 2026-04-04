@@ -6,6 +6,7 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from card_game.catalog import get_pack_name, get_rarity_label
+from settings import CURRENCY_NAME_GENITIVE, CURRENCY_SHORT_NAME
 
 if TYPE_CHECKING:
     from handlers.card_handlers.state import ChallengeLobby
@@ -46,12 +47,12 @@ def format_pack_menu(packs: list[dict], balance: int) -> str:
     lines = [
         "🎁 <b>Выберите пак для открытия</b>",
         "",
-        f"Ваш баланс: <b>{balance}</b> Имперских Батов",
+        f"Ваш баланс: <b>{balance}</b> {CURRENCY_NAME_GENITIVE}",
         "В каждом паке лежат 3 карты только из своей категории.",
     ]
     for pack in packs:
         description = f" — {escape(pack['description'])}" if pack.get("description") else ""
-        lines.append(f"• {escape(pack['name'])} | {pack['price']} IB{description}")
+        lines.append(f"• {escape(pack['name'])} | {pack['price']} {CURRENCY_SHORT_NAME}{description}")
     return "\n".join(lines)
 
 
@@ -71,14 +72,14 @@ def format_pack_animation_frame(pack_name: str, step: int, total_steps: int) -> 
 def format_pack_result(pack_name: str, cards: list[dict], balance: int | None = None) -> str:
     lines = [f"✨ <b>Пак «{escape(pack_name)}» открыт!</b>"]
     if balance is not None:
-        lines.append(f"Остаток: <b>{balance}</b> Имперских Батов")
+        lines.append(f"Остаток: <b>{balance}</b> {CURRENCY_NAME_GENITIVE}")
     lines.append("")
     lines.extend(f"• {format_card_line(card)}" for card in cards)
     return "\n".join(lines)
 
 
 def format_wallet(balance: int) -> str:
-    return f"💰 Ваш карточный бюджет: <b>{balance}</b> Имперских Батов"
+    return f"💰 Ваш карточный бюджет: <b>{balance}</b> {CURRENCY_NAME_GENITIVE}"
 
 
 def format_event_list(events: list[dict]) -> str:
@@ -88,7 +89,7 @@ def format_event_list(events: list[dict]) -> str:
     lines = ["🏛 <b>Активные карточные ивенты:</b>", ""]
     for event in events:
         description = f"\n{escape(event['description'])}" if event.get("description") else ""
-        lines.append(f"#{event['id']} {escape(event['title'])} — награда {event['reward']} IB{description}")
+        lines.append(f"#{event['id']} {escape(event['title'])} — награда {event['reward']} {CURRENCY_SHORT_NAME}{description}")
         lines.append("")
     return "\n".join(lines).strip()
 
@@ -99,7 +100,7 @@ def format_admin_event_list(events: list[dict]) -> str:
 
     lines = ["Ивенты карточной игры:"]
     for event in events:
-        lines.append(f"#{event['id']} [{event['status']}] {event['title']} — {event['reward']} IB")
+        lines.append(f"#{event['id']} [{event['status']}] {event['title']} — {event['reward']} {CURRENCY_SHORT_NAME}")
     return "\n".join(lines)
 
 
@@ -110,7 +111,7 @@ def format_admin_pack_list(packs: list[dict]) -> str:
     lines = ["Паки карточной игры:"]
     for pack in packs:
         status = "активен" if pack["is_active"] else "скрыт"
-        lines.append(f"#{pack['id']} {pack['name']} — {pack['price']} IB ({status})")
+        lines.append(f"#{pack['id']} {pack['name']} — {pack['price']} {CURRENCY_SHORT_NAME} ({status})")
     return "\n".join(lines)
 
 

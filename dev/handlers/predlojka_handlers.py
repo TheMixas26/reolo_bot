@@ -5,13 +5,16 @@ import logging
 import re
 import threading
 import time
+from datetime import datetime
 from dataclasses import dataclass
+from pathlib import Path
+from random import choice, random
 
 from telebot import types
 
 from ai.ai_module import stream_ai
 from analytics.stats import log_event
-from config import predlojka_bot, admin, channel, channel_red, chat_mishas_den
+from config import predlojka_bot, admin, channel, channel_red, chat_mishas_den, backup_chat
 from database.sqlite_db import add_to_post_counter, create_user_if_missing, user_exists
 from utils.utils import thx_for_message
 
@@ -24,11 +27,37 @@ media_groups_timer: dict[str, threading.Timer] = {}
 moderation_queue: dict[int, dict] = {}
 album_queue: dict[int, dict] = {}
 pending_question_answers: dict[int, dict] = {}
+direct_message_queue: dict[int, dict] = {}
+pending_direct_message_answers: dict[int, dict] = {}
 
 MEDIA_GROUP_TIMEOUT = 2.0
-CONTROL_TAGS = {"#анон", "#вопрос", "#ai"}
+BASE_DIR = Path(__file__).resolve().parent.parent
+VARIBLES_DIR = BASE_DIR / "varibles"
+EVENT_LIBRARY_PATH = VARIBLES_DIR / "events_library.txt"
+REPORT_LIBRARY_PATH = VARIBLES_DIR / "reports_library.txt"
+TAG_ALIASES = {
+    "#анон": "#anon",
+    "#anon": "#anon",
+    "#вопрос": "#question",
+    "#question": "#question",
+    "#ai": "#ai",
+    "#ignore": "#ignore",
+    "#event": "#event",
+    "#report": "#report",
+    "#message": "#message",
+    "#dm": "#message",
+}
+CONTROL_TAGS = set(TAG_ALIASES.values())
 TAG_PATTERN = re.compile(r"(?<!\w)#[\wа-яА-ЯёЁ]+", re.UNICODE)
 BLOCKED_SUBMISSION_CHATS = {channel, channel_red, chat_mishas_den}
+ADVICE_MESSAGES = [
+    "Совет вы можете написать в посте тег <code>#anon</code> или <code>#анон</code> - бот не будет указывать ваше имя в публикации.",
+    "Подсказка: идеи для активностей можно отправлять тегом <code>#event</code> вместо обычной предложки.",
+    "Подсказка: баги, опечатки и прочие технические замечания удобнее присылать через <code>#report</code>.",
+    "Совет: <code>#message</code> и <code>#dm</code> отправляют сообщение админу с возможностью ответить вам в личку.",
+    "Небольшой лайфхак: тег <code>#ignore</code> отправляет сообщение без ответной реакции бота.",
+    "Подсказка: обычные пользовательские теги публикуются как теги поста, а служебные вроде <code>#event</code> и <code>#report</code> меняют маршрут сообщения.",
+]
 
 
 @dataclass
@@ -38,6 +67,8 @@ class SubmissionContent:
     is_anonymous: bool
     is_question: bool
     wants_ai: bool
+    ignore_reaction: bool
+    route: str
 
 
 def safe_delete_message(chat_id: int, message_id: int, max_retries: int = 3) -> bool:
@@ -81,19 +112,24 @@ def _can_submit_post(chat_id: int) -> bool:
     return chat_id not in BLOCKED_SUBMISSION_CHATS
 
 
+def _can_submit_service_message(chat_id: int) -> bool:
+    return chat_id not in {channel, channel_red}
+
+
 def _parse_submission_text(text: str | None) -> SubmissionContent:
     raw_text = text or ""
     public_tags: list[str] = []
     seen_tags: set[str] = set()
-    flags = {"#анон": False, "#вопрос": False, "#ai": False}
+    flags = {tag: False for tag in CONTROL_TAGS}
 
     def _replace_tag(match: re.Match[str]) -> str:
         tag = match.group(0)
         normalized = tag.lower()
-        if normalized in flags:
-            flags[normalized] = True
+        canonical = TAG_ALIASES.get(normalized, normalized)
+        if canonical in flags:
+            flags[canonical] = True
         else:
-            public_tag = normalized
+            public_tag = canonical
             if public_tag not in seen_tags:
                 seen_tags.add(public_tag)
                 public_tags.append(public_tag)
@@ -104,12 +140,22 @@ def _parse_submission_text(text: str | None) -> SubmissionContent:
     clean_text = re.sub(r" *\n *", "\n", clean_text)
     clean_text = re.sub(r"\n{3,}", "\n\n", clean_text).strip()
 
+    route = "post"
+    if flags["#message"]:
+        route = "message"
+    elif flags["#report"]:
+        route = "report"
+    elif flags["#event"]:
+        route = "event"
+
     return SubmissionContent(
         clean_text=clean_text,
         public_tags=public_tags,
-        is_anonymous=flags["#анон"],
-        is_question=flags["#вопрос"],
+        is_anonymous=flags["#anon"],
+        is_question=flags["#question"] and route == "post",
         wants_ai=flags["#ai"],
+        ignore_reaction=flags["#ignore"],
+        route=route,
     )
 
 
@@ -121,6 +167,218 @@ def _compose_publish_text(content: SubmissionContent, user_name: str) -> str:
         parts.append("🏷️ " + " ".join(content.public_tags))
     parts.append("🤫 Аноним" if content.is_anonymous else f"👤 {user_name}")
     return "\n\n".join(parts).strip()
+
+
+def _build_service_text(content: SubmissionContent, user_name: str) -> str:
+    parts: list[str] = []
+    if content.clean_text:
+        parts.append(content.clean_text)
+    if content.public_tags:
+        parts.append("🏷️ " + " ".join(content.public_tags))
+    parts.append("🤫 Аноним" if content.is_anonymous else f"👤 {user_name}")
+    return "\n\n".join(parts).strip()
+
+
+def _maybe_send_advice(message, content: SubmissionContent) -> None:
+    if content.ignore_reaction:
+        return
+    if random() >= 0.4:
+        return
+    predlojka_bot.send_message(
+        message.chat.id,
+        choice(ADVICE_MESSAGES),
+        reply_to_message_id=message.message_id,
+        parse_mode="HTML",
+    )
+
+
+def _acknowledge_submission(message, content: SubmissionContent, user_name: str) -> None:
+    if content.ignore_reaction:
+        return
+
+    if content.route == "event":
+        text = thx_for_message(user_name, mes_type="event")
+    elif content.route == "report":
+        text = thx_for_message(user_name, mes_type="report")
+    elif content.route == "message":
+        text = thx_for_message(user_name, mes_type="message")
+    else:
+        text = thx_for_message(user_name, mes_type="?" if content.is_question else "!")
+
+    predlojka_bot.send_message(message.chat.id, text, reply_markup=q)
+    _maybe_send_advice(message, content)
+
+
+def _build_direct_message_markup() -> types.InlineKeyboardMarkup:
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("Ответить в ЛС", callback_data="dm:reply"))
+    markup.add(types.InlineKeyboardButton("Закрыть", callback_data="dm:close"))
+    return markup
+
+
+def _author_line(message, content: SubmissionContent, user_name: str) -> str:
+    if content.is_anonymous and content.route != "message":
+        return "🤫 Автор: Аноним"
+    username = getattr(message.from_user, "username", None)
+    username_line = f" | @{username}" if username else ""
+    return f"👤 Автор: {user_name}{username_line} | id {message.from_user.id}"
+
+
+def _build_route_summary(message, content: SubmissionContent, user_name: str, *, route_label: str, content_type: str, items_count: int | None = None) -> str:
+    lines = [
+        route_label,
+        _author_line(message, content, user_name),
+        f"Тип контента: {content_type}",
+    ]
+    if items_count is not None:
+        lines.append(f"Файлов в сообщении: {items_count}")
+    if content.public_tags:
+        lines.append("Публичные теги: " + " ".join(content.public_tags))
+    if content.clean_text:
+        lines.extend(["", content.clean_text])
+    return "\n".join(lines)
+
+
+def _append_library_entry(path: Path, message, content: SubmissionContent, user_name: str, *, route_label: str, content_type: str, items_count: int | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines = [
+        f"[{timestamp}] {route_label}",
+        _author_line(message, content, user_name),
+        f"Тип контента: {content_type}",
+    ]
+    if items_count is not None:
+        lines.append(f"Файлов в сообщении: {items_count}")
+    if content.public_tags:
+        lines.append("Публичные теги: " + " ".join(content.public_tags))
+    lines.extend(["Текст:", content.clean_text or "(без текста)", "", "-" * 60, ""])
+    with path.open("a", encoding="utf-8") as file:
+        file.write("\n".join(lines))
+
+
+def _send_report_library_snapshot() -> None:
+    if not REPORT_LIBRARY_PATH.exists():
+        return
+
+    try:
+        with REPORT_LIBRARY_PATH.open("rb") as file:
+            predlojka_bot.send_document(
+                backup_chat,
+                file,
+                visible_file_name="reports_library.txt",
+                caption="Новый репорт добавлен в reports_library.txt",
+                disable_notification=True,
+            )
+    except Exception as error:
+        logger.error(f"Не удалось отправить reports_library.txt в debug chat: {error}")
+
+
+def _copy_single_message_to_admin(message):
+    try:
+        return predlojka_bot.copy_message(admin, message.chat.id, message.message_id)
+    except Exception as error:
+        logger.error(f"Не удалось скопировать сообщение админу: {error}")
+        return None
+
+
+def _store_special_route(message, content: SubmissionContent) -> None:
+    user_name = _display_name(message.from_user)
+    route_labels = {
+        "event": "Новая идея события",
+        "report": "Новый репорт",
+        "message": "Новое сообщение админу",
+    }
+    route_label = route_labels[content.route]
+
+    if content.route == "event":
+        _append_library_entry(EVENT_LIBRARY_PATH, message, content, user_name, route_label=route_label, content_type=message.content_type)
+    elif content.route == "report":
+        _append_library_entry(REPORT_LIBRARY_PATH, message, content, user_name, route_label=route_label, content_type=message.content_type)
+        _send_report_library_snapshot()
+
+    copied_message = _copy_single_message_to_admin(message)
+    summary = _build_route_summary(message, content, user_name, route_label=route_label, content_type=message.content_type)
+
+    if content.route == "message":
+        control_message = predlojka_bot.send_message(
+            admin,
+            summary,
+            reply_to_message_id=copied_message.message_id if copied_message else None,
+            reply_markup=_build_direct_message_markup(),
+        )
+        direct_message_queue[control_message.message_id] = {
+            "source_user_id": message.from_user.id,
+            "author_name": user_name,
+            "is_anonymous": content.is_anonymous,
+            "content_type": message.content_type,
+        }
+    else:
+        predlojka_bot.send_message(
+            admin,
+            summary,
+            reply_to_message_id=copied_message.message_id if copied_message else None,
+        )
+
+    _acknowledge_submission(message, content, user_name)
+    log_event(
+        f"{content.route}_submitted",
+        bot="predlojka",
+        user_id=message.from_user.id,
+        chat_id=message.chat.id,
+        metadata={"content_type": message.content_type, "anonymous": content.is_anonymous, "tags": content.public_tags},
+    )
+
+
+def _store_special_route_album(items: list, content: SubmissionContent) -> None:
+    first_item = items[0]
+    user_name = _display_name(first_item.from_user)
+    route_labels = {
+        "event": "Новая идея события",
+        "report": "Новый репорт",
+        "message": "Новое сообщение админу",
+    }
+    route_label = route_labels[content.route]
+    publish_caption = _build_service_text(content, user_name)
+    media = _build_album_media(items, publish_caption)
+    preview_ids: list[int] = []
+
+    if content.route == "event":
+        _append_library_entry(EVENT_LIBRARY_PATH, first_item, content, user_name, route_label=route_label, content_type="album", items_count=len(media))
+    elif content.route == "report":
+        _append_library_entry(REPORT_LIBRARY_PATH, first_item, content, user_name, route_label=route_label, content_type="album", items_count=len(media))
+        _send_report_library_snapshot()
+
+    if media:
+        sent_preview = safe_send_media_group(admin, media)
+        if sent_preview:
+            preview_ids = [item.message_id for item in sent_preview]
+
+    summary = _build_route_summary(first_item, content, user_name, route_label=route_label, content_type="album", items_count=len(media))
+    if content.route == "message":
+        control_message = predlojka_bot.send_message(
+            admin,
+            summary,
+            reply_to_message_id=preview_ids[0] if preview_ids else None,
+            reply_markup=_build_direct_message_markup(),
+        )
+        direct_message_queue[control_message.message_id] = {
+            "source_user_id": first_item.from_user.id,
+            "author_name": user_name,
+            "is_anonymous": content.is_anonymous,
+            "content_type": "album",
+            "preview_ids": preview_ids,
+        }
+    else:
+        predlojka_bot.send_message(admin, summary, reply_to_message_id=preview_ids[0] if preview_ids else None)
+
+    _acknowledge_submission(first_item, content, user_name)
+    log_event(
+        f"{content.route}_submitted",
+        bot="predlojka",
+        user_id=first_item.from_user.id,
+        chat_id=first_item.chat.id,
+        metadata={"content_type": "album", "anonymous": content.is_anonymous, "tags": content.public_tags, "count": len(media)},
+    )
 
 
 def _escape_markdown_v2(text: str) -> str:
@@ -183,9 +441,9 @@ def _build_moderation_markup(*, is_album: bool = False, is_question: bool = Fals
 def _preview_title(content: SubmissionContent, content_type: str) -> str:
     flags = []
     if content.is_question:
-        flags.append("вопрос")
+        flags.append("question")
     if content.is_anonymous:
-        flags.append("анон")
+        flags.append("anon")
     flags.append(content_type)
     return "Новая запись: " + ", ".join(flags)
 
@@ -387,6 +645,64 @@ def handle_question_answer_input(message):
         predlojka_bot.reply_to(message, "Не получилось опубликовать вопрос с ответом.. Вернула его в очередь модерации!")
 
 
+def _request_direct_message_answer(call, payload: dict) -> None:
+    pending_direct_message_answers[call.from_user.id] = {
+        "payload": payload,
+        "control_message_id": call.message.message_id,
+    }
+    prompt = predlojka_bot.send_message(
+        admin,
+        "Напиши текст ответа, и я отправлю его пользователю в ЛС.\n\nЕсли передумал, напиши /cancel_dm_answer",
+        reply_to_message_id=call.message.message_id,
+    )
+    predlojka_bot.register_next_step_handler(prompt, handle_direct_message_answer_input)
+    predlojka_bot.answer_callback_query(call.id, "Жду ответ для отправки в ЛС.")
+
+
+def handle_direct_message_answer_input(message):
+    pending = pending_direct_message_answers.get(message.from_user.id)
+    if pending is None:
+        predlojka_bot.reply_to(message, "Не вижу сообщения, которое ждёт ответа.")
+        return
+
+    if message.text and message.text.strip() == "/cancel_dm_answer":
+        direct_message_queue[pending["control_message_id"]] = pending["payload"]
+        pending_direct_message_answers.pop(message.from_user.id, None)
+        predlojka_bot.reply_to(message, "Хорошо, отменяю ответ и возвращаю сообщение в очередь.")
+        return
+
+    answer_text = (message.text or "").strip()
+    if not answer_text:
+        retry_prompt = predlojka_bot.reply_to(message, "Смогу переслать пользователю только текстовый ответ.")
+        predlojka_bot.register_next_step_handler(retry_prompt, handle_direct_message_answer_input)
+        return
+
+    payload = pending["payload"]
+    control_message_id = pending["control_message_id"]
+
+    try:
+        predlojka_bot.send_message(
+            payload["source_user_id"],
+            "Ответ администрации:\n\n" + answer_text,
+        )
+        pending_direct_message_answers.pop(message.from_user.id, None)
+        safe_delete_message(admin, control_message_id)
+        safe_delete_message(admin, message.message_id)
+        predlojka_bot.send_message(admin, "Ответ пользователю отправлен в ЛС.")
+        log_event(
+            "direct_message_replied",
+            bot="predlojka",
+            user_id=message.from_user.id,
+            chat_id=message.chat.id,
+            metadata={"source_user_id": payload["source_user_id"], "answer_length": len(answer_text)},
+        )
+    except Exception as error:
+        direct_message_queue[control_message_id] = payload
+        pending_direct_message_answers.pop(message.from_user.id, None)
+        logger.error(f"Не удалось отправить ответ в ЛС: {error}")
+        predlojka_bot.reply_to(message, "Не получилось отправить ответ в ЛС. Вернула сообщение в очередь.")
+
+
 def _handle_ai_request(message, content: SubmissionContent) -> None:
     name = _display_name(message.from_user)
     prompt_text = content.clean_text or message.text
@@ -433,22 +749,25 @@ def _submit_single_message(message) -> None:
     content_text = message.text if message.content_type == "text" else message.caption
     content = _parse_submission_text(content_text)
 
-    if message.content_type == "text" and content.wants_ai and _can_use_ai(message.chat.id):
+    if content.route == "post" and message.content_type == "text" and content.wants_ai and _can_use_ai(message.chat.id):
         _handle_ai_request(message, content)
         return
 
-    if not _can_submit_post(message.chat.id):
+    if content.route == "post" and not _can_submit_post(message.chat.id):
+        return
+
+    if content.route != "post" and not _can_submit_service_message(message.chat.id):
         return
 
     user_name = _display_name(message.from_user)
+
+    if content.route != "post":
+        _store_special_route(message, content)
+        return
+
     publish_text = _compose_publish_text(content, user_name)
     add_to_post_counter(message.from_user.id)
-
-    predlojka_bot.send_message(
-        message.chat.id,
-        thx_for_message(user_name, mes_type="?" if content.is_question else "!"),
-        reply_markup=q,
-    )
+    _acknowledge_submission(message, content, user_name)
     _send_admin_preview(message, content, publish_text)
 
     _log_submission(
@@ -489,12 +808,19 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
         media_groups_timer.pop(media_group_id, None)
         if not items:
             return
-        if not _can_submit_post(items[0].chat.id):
-            return
 
         user = items[0].from_user
         captions = [item.caption for item in items if item.caption]
         content = _parse_submission_text("\n".join(captions))
+        if content.route == "post" and not _can_submit_post(items[0].chat.id):
+            return
+        if content.route != "post" and not _can_submit_service_message(items[0].chat.id):
+            return
+
+        if content.route != "post":
+            _store_special_route_album(items, content)
+            return
+
         user_name = _display_name(user)
         publish_caption = _compose_publish_text(content, user_name)
         media = _build_album_media(items, publish_caption)
@@ -504,11 +830,7 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
             return
 
         add_to_post_counter(user.id)
-        predlojka_bot.send_message(
-            items[0].chat.id,
-            thx_for_message(user_name, mes_type="?" if content.is_question else "!"),
-            reply_markup=q,
-        )
+        _acknowledge_submission(items[0], content, user_name)
 
         sent_preview = safe_send_media_group(admin, media)
         if not sent_preview:
@@ -631,6 +953,32 @@ def denier(call):
         metadata={"source_user_id": payload["source_user_id"], "content_type": payload["content_type"]},
     )
     logger.info("Пост отклонён")
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data == "dm:reply")
+def reply_in_dm(call):
+    payload = direct_message_queue.pop(call.message.message_id, None)
+    if payload is None:
+        predlojka_bot.answer_callback_query(call.id, "Это сообщение уже обработано или устарело.")
+        return
+    _request_direct_message_answer(call, payload)
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data == "dm:close")
+def close_dm_message(call):
+    payload = direct_message_queue.pop(call.message.message_id, None)
+    if payload is None:
+        predlojka_bot.answer_callback_query(call.id, "Это сообщение уже закрыто или устарело.")
+        return
+    safe_delete_message(admin, call.message.message_id)
+    predlojka_bot.answer_callback_query(call.id, "Сообщение закрыто.")
+    log_event(
+        "direct_message_closed",
+        bot="predlojka",
+        user_id=call.from_user.id,
+        chat_id=call.message.chat.id,
+        metadata={"source_user_id": payload["source_user_id"], "content_type": payload["content_type"]},
+    )
 
 
 @predlojka_bot.callback_query_handler(func=lambda call: call.data.startswith("+album|"))

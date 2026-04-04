@@ -6,6 +6,7 @@ from telebot import types
 
 from analytics.stats import EVENTS_LOG_PATH, write_summary_report
 from config import predlojka_bot, admin, backup_chat
+from settings import render_text_template
 
 COMMANDS_FILE_PATH = Path("varibles/command_list.txt")
 
@@ -65,6 +66,22 @@ def thx_for_message(user_name: str, mes_type: str) -> str:
         f"Ну всё, {user_name}, теперь админ обязан ответить! Интригааа...",
         f"{user_name}, ты хоть про подвалы так не спроси... Отправил вопрос, ждём ответ!",
     ]
+
+    events_variants = [
+        f"Идея события записана в библиотеку событий! Спасибо (^_^)",
+        f"Спасибо за идею для события! Я уже добавила её в нашу коллекцию!",
+    ]
+
+    report_variants = [
+        f"Репорт передан админу и сохранён в журнале. Спасибо за внимательность!",
+        f"Спасибо за репорт! Админ уже получил его и обязательно разберётся с проблемой!",
+    ]
+
+    message_variants = [
+        f"Сообщение передано админу. Думаю, он ответит вам в личку!",
+        f"Спасибо за сообщение! Я уже отправила его админу, он обязательно с вами свяжется! Надеюсь...",
+    ]
+
     FUN = random()
 
     if mes_type == '!': 
@@ -76,6 +93,10 @@ def thx_for_message(user_name: str, mes_type: str) -> str:
             return choice(secret_variants_v)
         
     elif mes_type == '?': return choice(variants_q)
+    elif mes_type == 'event': return choice(events_variants)
+    elif mes_type == 'report': return choice(report_variants)
+    elif mes_type == 'message': return choice(message_variants)
+    else: return f"Спасибо за ваше сообщение, {user_name}!!!"
 
 
 def _normalize_section_name(raw_name: str) -> str:
@@ -105,7 +126,7 @@ def _load_command_registry() -> dict[str, list[types.BotCommand]]:
 
                 command, description = parts
                 registry.setdefault(current_section, []).append(
-                    types.BotCommand(command.strip(), description.strip())
+                    types.BotCommand(command.strip(), render_text_template(description.strip()))
                 )
 
     except FileNotFoundError:

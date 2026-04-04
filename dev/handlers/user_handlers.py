@@ -2,15 +2,16 @@ from config import predlojka_bot, admin, chat_mishas_den
 from database.sqlite_db import user_exists, create_user_if_missing, get_birthday, set_personal_notify
 from utils.birthdays import add_birthday, add_birthday_by_username
 from analytics.stats import log_command_usage, log_event
+from settings import MAIN_BOT_NAME, PROJECT_NAME, RPG_BOT_NAME, RPG_BOT_USERNAME, render_text_template
 
 @predlojka_bot.message_handler(commands=['start'])
 def start(message):
     log_command_usage("predlojka", "start", message)
     if user_exists(message.from_user.id):
-        predlojka_bot.reply_to(message, text="С возвращением в Предложку! Ожидаем постов)")
+        predlojka_bot.reply_to(message, text=f"С возвращением в {MAIN_BOT_NAME}! Ожидаем постов)")
     else:
         create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
-        predlojka_bot.reply_to(message, text="Добро пожаловать в Империю!")
+        predlojka_bot.reply_to(message, text=f"Добро пожаловать в {PROJECT_NAME}!")
         # TODO: нормальное привествие новых пользователей
         log_event("user_registered", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
 
@@ -59,7 +60,7 @@ def help(message):
     log_command_usage("predlojka", "help", message)
     try:
         with open('varibles/help_info.txt', mode='r', encoding='utf-8') as f:
-            help_string = f.read()
+            help_string = render_text_template(f.read())
         predlojka_bot.reply_to(message, text=help_string, parse_mode='HTML')
     except Exception as e:
         print(e)
@@ -73,7 +74,12 @@ def help(message):
 @predlojka_bot.message_handler(commands=['battle'])
 def redirect_to_rpg_bot(message):
     log_command_usage("predlojka", "battle", message)
-    predlojka_bot.reply_to(message, "Притормози, дружище! вся RPG система переехала в другого бота! Не волнуйся, формально, это всё ещё я, бот запущен в том же коде) И тем ни менее! Бегом в него! \n\n@reolo_rpg_bot")
+    predlojka_bot.reply_to(
+        message,
+        f"Притормози, дружище! Вся RPG система переехала в {RPG_BOT_NAME}. "
+        f"Не волнуйся, формально это всё ещё я, просто вынесенная часть проекта. "
+        f"Бегом в него!\n\n{RPG_BOT_USERNAME}"
+    )
 
 
 
