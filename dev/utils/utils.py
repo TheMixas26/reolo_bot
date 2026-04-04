@@ -8,7 +8,7 @@ from analytics.stats import EVENTS_LOG_PATH, write_summary_report
 from config import predlojka_bot, admin, backup_chat
 from settings import render_text_template
 
-COMMANDS_FILE_PATH = Path("varibles/command_list.txt")
+COMMANDS_FILE_PATH = Path("dev/varibles/command_list.txt")
 
 def thx_for_message(user_name: str, mes_type: str) -> str:
     """Генерирует рандомный ответ в зависимости от типа сообщения (вопрос или утверждение)"""
@@ -187,7 +187,7 @@ def backupDB():
         summary_path = write_summary_report()
 
         send_backup_file(
-            "database/bot.sqlite3",
+            "dev/database/bot.sqlite3",
             f"db_backup_{date_str}.sqlite3",
             f"📦 Ежедневная порция данных за {date_str}",
         )

@@ -9,3 +9,4 @@ handlers/__pycache__
 */__pycache__
 *.sqlite3
 *.jsonl
+dev/database/scheduled_posts.json

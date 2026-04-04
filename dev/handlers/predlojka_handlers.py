@@ -15,7 +15,12 @@ from telebot import types
 from ai.ai_module import stream_ai
 from analytics.stats import log_event
 from config import predlojka_bot, admin, channel, channel_red, chat_mishas_den, backup_chat
+from database.scheduled_posts_db import create_scheduled_post, get_due_scheduled_posts, remove_scheduled_post
 from database.sqlite_db import add_to_post_counter, create_user_if_missing, user_exists
+from posting.models import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin
+from posting.platform_ids import to_storage_user_id
+from posting.runtime import post_publisher, telegram_adapter, telegram_admin_target
+from posting.services import PostFormatter
 from utils.utils import thx_for_message
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -26,9 +31,13 @@ media_groups_buffer: dict[str, list] = {}
 media_groups_timer: dict[str, threading.Timer] = {}
 moderation_queue: dict[int, dict] = {}
 album_queue: dict[int, dict] = {}
+album_media_cache: dict[int, dict] = {}
 pending_question_answers: dict[int, dict] = {}
 direct_message_queue: dict[int, dict] = {}
 pending_direct_message_answers: dict[int, dict] = {}
+pending_scheduled_publications: dict[int, dict] = {}
+scheduled_publish_lock = threading.Lock()
+QUESTION_ANSWER_SEPARATOR = "\n\n=====QUESTION_ANSWER_SEPARATOR=====\n\n"
 
 MEDIA_GROUP_TIMEOUT = 2.0
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -69,6 +78,84 @@ class SubmissionContent:
     wants_ai: bool
     ignore_reaction: bool
     route: str
+
+
+def _serialize_post(post: Post) -> dict:
+    return {
+        "author": {
+            "user_id": post.author.user_id,
+            "display_name": post.author.display_name,
+            "username": post.author.username,
+        },
+        "origin": {
+            "platform": post.origin.platform.value,
+            "chat_id": post.origin.chat_id,
+            "user_id": post.origin.user_id,
+            "message_id": post.origin.message_id,
+            "media_group_id": post.origin.media_group_id,
+        },
+        "text": post.text,
+        "public_tags": list(post.public_tags),
+        "is_anonymous": post.is_anonymous,
+        "is_question": post.is_question,
+        "wants_ai": post.wants_ai,
+        "append_author_signature": post.append_author_signature,
+        "attachments": [
+            {
+                "media_type": attachment.media_type.value,
+                "references": {platform.value: value for platform, value in attachment.references.items()},
+                "file_name": attachment.file_name,
+            }
+            for attachment in post.attachments
+        ],
+    }
+
+
+def _deserialize_post(data: dict) -> Post:
+    return Post(
+        author=PostAuthor(**data["author"]),
+        origin=PostOrigin(
+            platform=Platform(data["origin"]["platform"]),
+            chat_id=data["origin"]["chat_id"],
+            user_id=data["origin"]["user_id"],
+            message_id=data["origin"].get("message_id"),
+            media_group_id=data["origin"].get("media_group_id"),
+        ),
+        text=data.get("text", ""),
+        public_tags=list(data.get("public_tags") or []),
+        is_anonymous=bool(data.get("is_anonymous")),
+        is_question=bool(data.get("is_question")),
+        wants_ai=bool(data.get("wants_ai")),
+        append_author_signature=bool(data.get("append_author_signature", True)),
+        attachments=[
+            MediaAttachment(
+                media_type=MediaType(item["media_type"]),
+                references={Platform(key): value for key, value in (item.get("references") or {}).items()},
+                file_name=item.get("file_name"),
+            )
+            for item in data.get("attachments") or []
+        ],
+    )
+
+
+def _build_platform_post_from_message(message, content: SubmissionContent) -> Post:
+    post = telegram_adapter.create_post_from_message(message)
+    post.text = content.clean_text
+    post.public_tags = list(content.public_tags)
+    post.is_anonymous = content.is_anonymous
+    post.is_question = content.is_question
+    post.wants_ai = content.wants_ai
+    return post
+
+
+def _build_platform_post_from_album(items: list, content: SubmissionContent) -> Post:
+    post = telegram_adapter.create_post_from_media_group(items)
+    post.text = content.clean_text
+    post.public_tags = list(content.public_tags)
+    post.is_anonymous = content.is_anonymous
+    post.is_question = content.is_question
+    post.wants_ai = content.wants_ai
+    return post
 
 
 def safe_delete_message(chat_id: int, message_id: int, max_retries: int = 3) -> bool:
@@ -432,10 +519,24 @@ def _build_moderation_markup(*, is_album: bool = False, is_question: bool = Fals
     markup = types.InlineKeyboardMarkup()
     approve_callback = "mod_album:approve" if is_album else "mod:approve"
     reject_callback = "mod_album:reject" if is_album else "mod:reject"
+    draft_callback = "mod_album:draft" if is_album else "mod:draft"
+    schedule_callback = "mod_album:schedule" if is_album else "mod:schedule"
     approve_label = "Ответить и опубликовать" if is_question and not is_album else "Опубликовать"
     markup.add(types.InlineKeyboardButton(approve_label, callback_data=approve_callback))
     markup.add(types.InlineKeyboardButton("Отклонить", callback_data=reject_callback))
+    markup.add(types.InlineKeyboardButton("В черновик", callback_data=draft_callback))
+    markup.add(types.InlineKeyboardButton("Запланировать", callback_data=schedule_callback))
     return markup
+
+
+def _preview_title_for_post(post: Post) -> str:
+    flags = []
+    if post.is_question:
+        flags.append("question")
+    if post.is_anonymous:
+        flags.append("anon")
+    flags.append(post.content_type_label)
+    return "Новая запись: " + ", ".join(flags)
 
 
 def _preview_title(content: SubmissionContent, content_type: str) -> str:
@@ -465,17 +566,20 @@ def _log_submission(message, content: SubmissionContent, *, event_type: str, con
 def _send_admin_preview(message, content: SubmissionContent, publish_text: str) -> None:
     markup = _build_moderation_markup(is_question=content.is_question)
     preview_caption = publish_text or _compose_publish_text(content, _display_name(message.from_user))
+    platform_post = _build_platform_post_from_message(message, content)
     payload = {
         "content_type": message.content_type,
         "publish_text": publish_text,
         "file_id": None,
         "is_question": content.is_question,
         "helper_message_id": None,
+        "preview_message_ids": [],
         "source_user_id": message.from_user.id,
         "question_text": content.clean_text,
         "public_tags": list(content.public_tags),
         "is_anonymous": content.is_anonymous,
         "author_name": _display_name(message.from_user),
+        "post_data": _serialize_post(platform_post),
     }
 
     if message.content_type == "text":
@@ -510,78 +614,331 @@ def _send_admin_preview(message, content: SubmissionContent, publish_text: str) 
     moderation_queue[admin_message.message_id] = payload
 
 
+def _send_external_admin_preview(post: Post) -> None:
+    preview_text = PostFormatter.compose_publish_text(post)
+    preview_result = telegram_adapter.publish_post(telegram_admin_target, post, preview_text)
+    control_message = telegram_adapter.send_text(
+        admin,
+        _preview_title_for_post(post),
+        reply_markup=_build_moderation_markup(is_question=post.is_question),
+    )
+    moderation_queue[control_message.message_id] = {
+        "content_type": post.content_type_label,
+        "publish_text": preview_text,
+        "file_id": None,
+        "is_question": post.is_question,
+        "helper_message_id": None,
+        "preview_message_ids": [int(message_id) for message_id in preview_result.message_ids],
+        "source_user_id": to_storage_user_id(post.origin.platform, post.origin.user_id),
+        "question_text": post.text,
+        "public_tags": list(post.public_tags),
+        "is_anonymous": post.is_anonymous,
+        "author_name": post.author.display_name,
+        "post_data": _serialize_post(post),
+    }
+
+
+def _notify_publish_warnings(errors: dict) -> None:
+    if not errors:
+        return
+    warning_text = "Часть площадок не приняла публикацию:\n" + "\n".join(f"- {error}" for error in errors.values())
+    predlojka_bot.send_message(admin, warning_text)
+
+
 def _publish_payload(payload: dict) -> None:
     content_type = payload["content_type"]
     publish_text = payload["publish_text"]
     file_id = payload.get("file_id")
+    parse_mode = payload.get("parse_mode")
+    post_data = payload.get("post_data")
+
+    if post_data:
+        outcome = post_publisher.publish_post(
+            _deserialize_post(post_data),
+            rendered_text=publish_text,
+            disable_notification=True,
+            parse_mode=parse_mode,
+        )
+        if outcome.has_errors:
+            _notify_publish_warnings(outcome.errors)
+        return
 
     if content_type == "text":
-        predlojka_bot.send_message(channel, publish_text, disable_notification=True)
+        predlojka_bot.send_message(channel, publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "sticker":
         predlojka_bot.send_sticker(channel, file_id, disable_notification=True)
         if publish_text:
-            predlojka_bot.send_message(channel, publish_text, disable_notification=True)
+            predlojka_bot.send_message(channel, publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "photo":
-        predlojka_bot.send_photo(channel, file_id, caption=publish_text, disable_notification=True)
+        predlojka_bot.send_photo(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "video":
-        predlojka_bot.send_video(channel, file_id, caption=publish_text, disable_notification=True)
+        predlojka_bot.send_video(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "document":
-        predlojka_bot.send_document(channel, file_id, caption=publish_text, disable_notification=True)
+        predlojka_bot.send_document(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "audio":
-        predlojka_bot.send_audio(channel, file_id, caption=publish_text, disable_notification=True)
+        predlojka_bot.send_audio(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "voice":
-        predlojka_bot.send_voice(channel, file_id, caption=publish_text, disable_notification=True)
+        predlojka_bot.send_voice(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     raise ValueError(f"Неподдерживаемый тип публикации: {content_type}")
 
 
-def _publish_question_with_answer(payload: dict, answer_text: str) -> None:
-    formatted_text = _build_question_answer_post(payload, answer_text)
-    content_type = payload["content_type"]
-    file_id = payload.get("file_id")
+def _serialize_album_media(items: list, publish_caption: str) -> list[dict]:
+    media: list[dict] = []
+    for index, item in enumerate(items):
+        caption = publish_caption if index == 0 else None
+        if item.content_type == "photo":
+            media.append({"content_type": "photo", "file_id": item.photo[-1].file_id, "caption": caption})
+        elif item.content_type == "video":
+            media.append({"content_type": "video", "file_id": item.video.file_id, "caption": caption})
+    return media
 
-    if content_type == "text":
-        predlojka_bot.send_message(channel, formatted_text, disable_notification=True, parse_mode="MarkdownV2")
+
+def _deserialize_album_media(media_items: list[dict]) -> list:
+    media = []
+    for item in media_items:
+        if item["content_type"] == "photo":
+            media.append(types.InputMediaPhoto(item["file_id"], caption=item.get("caption")))
+        elif item["content_type"] == "video":
+            media.append(types.InputMediaVideo(item["file_id"], caption=item.get("caption")))
+        else:
+            raise ValueError(f"Неподдерживаемый элемент альбома: {item['content_type']}")
+    return media
+
+
+def _publish_album_payload(payload: dict) -> None:
+    post_data = payload.get("post_data")
+    if post_data:
+        outcome = post_publisher.publish_post(
+            _deserialize_post(post_data),
+            rendered_text=payload.get("publish_text", ""),
+            disable_notification=True,
+            parse_mode=payload.get("parse_mode"),
+        )
+        if outcome.has_errors:
+            _notify_publish_warnings(outcome.errors)
         return
-    if content_type == "photo":
-        predlojka_bot.send_photo(channel, file_id, caption=formatted_text, disable_notification=True, parse_mode="MarkdownV2")
-        return
-    if content_type == "video":
-        predlojka_bot.send_video(channel, file_id, caption=formatted_text, disable_notification=True, parse_mode="MarkdownV2")
-        return
-    if content_type == "document":
-        predlojka_bot.send_document(channel, file_id, caption=formatted_text, disable_notification=True, parse_mode="MarkdownV2")
-        return
-    if content_type == "audio":
-        predlojka_bot.send_audio(channel, file_id, caption=formatted_text, disable_notification=True, parse_mode="MarkdownV2")
-        return
-    if content_type == "voice":
-        predlojka_bot.send_voice(channel, file_id, caption=formatted_text, disable_notification=True, parse_mode="MarkdownV2")
-        return
-    if content_type == "sticker":
-        predlojka_bot.send_message(channel, formatted_text, disable_notification=True, parse_mode="MarkdownV2")
-        return
-    raise ValueError(f"Неподдерживаемый тип вопроса для публикации: {content_type}")
+    media = _deserialize_album_media(payload["media"])
+    sent = safe_send_media_group(channel, media)
+    if not sent:
+        raise RuntimeError("Не удалось отправить альбом в канал")
+
+
+def _build_question_answer_bundle(payload: dict, answer_text: str) -> str:
+    question_text = (payload.get("question_text") or "").strip() or _fallback_question_text(payload)
+    return f"{question_text}{QUESTION_ANSWER_SEPARATOR}{answer_text.strip()}"
+
+
+def _build_ready_question_payload(payload: dict, answer_text: str) -> dict:
+    ready_payload = dict(payload)
+    answer_text = answer_text.strip()
+    ready_payload["question_answer_bundle"] = _build_question_answer_bundle(payload, answer_text)
+    if ready_payload.get("post_data"):
+        ready_payload["publish_text"] = PostFormatter.build_question_answer_post(_deserialize_post(ready_payload["post_data"]), answer_text)
+    else:
+        ready_payload["publish_text"] = _build_question_answer_post(payload, answer_text)
+    ready_payload["parse_mode"] = "MarkdownV2"
+
+    return ready_payload
+
+
+def _publish_question_with_answer(payload: dict, answer_text: str) -> None:
+    _publish_payload(_build_ready_question_payload(payload, answer_text))
 
 
 def _clear_preview_messages(payload: dict, moderation_message_id: int | None = None) -> None:
     helper_message_id = payload.get("helper_message_id")
     if helper_message_id:
         safe_delete_message(admin, helper_message_id)
+    for preview_message_id in payload.get("preview_message_ids", []):
+        safe_delete_message(admin, preview_message_id)
     if moderation_message_id is not None:
         safe_delete_message(admin, moderation_message_id)
+
+
+def _clear_album_preview(queue_payload: dict, moderation_message_id: int | None = None) -> None:
+    for preview_id in queue_payload.get("preview_ids", []):
+        safe_delete_message(admin, preview_id)
+    if moderation_message_id is not None:
+        safe_delete_message(admin, moderation_message_id)
+
+
+def _parse_schedule_datetime(raw_value: str) -> datetime | None:
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+
+    now = datetime.now()
+    formats = (
+        ("%d.%m.%Y %H:%M", False),
+        ("%d.%m.%y %H:%M", False),
+        ("%Y-%m-%d %H:%M", False),
+        ("%d.%m %H:%M", True),
+    )
+
+    for fmt, inject_year in formats:
+        try:
+            parsed = datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+        if inject_year:
+            parsed = parsed.replace(year=now.year)
+        return parsed
+    return None
+
+
+def _request_schedule_datetime(admin_user_id: int, pending_payload: dict, *, reply_to_message_id: int | None = None, callback_query_id: str | None = None) -> None:
+    pending_scheduled_publications[admin_user_id] = pending_payload
+    prompt = predlojka_bot.send_message(
+        admin,
+        "Напиши дату и время публикации.\n\nПоддерживаю форматы: ДД.ММ.ГГГГ ЧЧ:ММ, ДД.ММ ЧЧ:ММ или ГГГГ-ММ-ДД ЧЧ:ММ.\nДля отмены отправь /cancel_schedule",
+        reply_to_message_id=reply_to_message_id,
+    )
+    predlojka_bot.register_next_step_handler(prompt, handle_schedule_datetime_input)
+    if callback_query_id is not None:
+        predlojka_bot.answer_callback_query(callback_query_id, "Жду дату и время публикации.")
+
+
+def _save_single_payload_as_draft(payload: dict, moderation_message_id: int, admin_user_id: int, chat_id: int) -> None:
+    record_id = create_scheduled_post(
+        payload=dict(payload),
+        content_type=payload["content_type"],
+        publish_at=None,
+        is_question=payload["is_question"],
+        is_anonymous=payload["is_anonymous"],
+        source_user_id=payload["source_user_id"],
+        status="draft",
+        created_by=admin_user_id,
+    )
+    _clear_preview_messages(payload, moderation_message_id)
+    predlojka_bot.send_message(admin, f"Черновик сохранён. ID задачи: {record_id}")
+    log_event(
+        "post_drafted",
+        bot="predlojka",
+        user_id=admin_user_id,
+        chat_id=chat_id,
+        metadata={
+            "draft_id": record_id,
+            "source_user_id": payload["source_user_id"],
+            "content_type": payload["content_type"],
+        },
+    )
+
+
+def _save_album_payload_as_draft(queue_payload: dict, storage_payload: dict, moderation_message_id: int, admin_user_id: int, chat_id: int) -> None:
+    record_id = create_scheduled_post(
+        payload=dict(storage_payload),
+        content_type="album",
+        publish_at=None,
+        is_question=queue_payload["is_question"],
+        is_anonymous=queue_payload["is_anonymous"],
+        source_user_id=queue_payload["source_user_id"],
+        status="draft",
+        created_by=admin_user_id,
+    )
+    _clear_album_preview(queue_payload, moderation_message_id)
+    predlojka_bot.send_message(admin, f"Черновик альбома сохранён. ID задачи: {record_id}")
+    log_event(
+        "album_drafted",
+        bot="predlojka",
+        user_id=admin_user_id,
+        chat_id=chat_id,
+        metadata={
+            "draft_id": record_id,
+            "source_user_id": queue_payload["source_user_id"],
+            "is_question": queue_payload["is_question"],
+        },
+    )
+
+
+def _restore_scheduled_pending(pending: dict) -> None:
+    moderation_message_id = pending["moderation_message_id"]
+    if pending["queue_type"] == "album":
+        album_queue[moderation_message_id] = pending["queue_payload"]
+        album_media_cache[moderation_message_id] = pending["storage_payload"]
+    else:
+        moderation_queue[moderation_message_id] = pending["storage_payload"]
+
+
+def handle_schedule_datetime_input(message):
+    pending = pending_scheduled_publications.get(message.from_user.id)
+    if pending is None:
+        predlojka_bot.reply_to(message, "Не вижу публикации, которая ждёт планирования.")
+        return
+
+    if message.text and message.text.strip() == "/cancel_schedule":
+        _restore_scheduled_pending(pending)
+        pending_scheduled_publications.pop(message.from_user.id, None)
+        predlojka_bot.reply_to(message, "Отменяю планирование и возвращаю запись в очередь модерации.")
+        return
+
+    publish_at = _parse_schedule_datetime(message.text or "")
+    if publish_at is None:
+        retry_prompt = predlojka_bot.reply_to(
+            message,
+            "Не смогла распознать дату. Попробуй формат вроде 05.04.2026 14:30.",
+        )
+        predlojka_bot.register_next_step_handler(retry_prompt, handle_schedule_datetime_input)
+        return
+
+    if publish_at <= datetime.now():
+        retry_prompt = predlojka_bot.reply_to(
+            message,
+            "Нужно указать время в будущем. Попробуй ещё раз.",
+        )
+        predlojka_bot.register_next_step_handler(retry_prompt, handle_schedule_datetime_input)
+        return
+
+    try:
+        record_id = create_scheduled_post(
+            payload=pending["storage_payload"],
+            content_type=pending["content_type"],
+            publish_at=publish_at,
+            is_question=pending["is_question"],
+            is_anonymous=pending["is_anonymous"],
+            source_user_id=pending["source_user_id"],
+            created_by=message.from_user.id,
+        )
+        if pending["queue_type"] == "album":
+            _clear_album_preview(pending["queue_payload"], pending["moderation_message_id"])
+        else:
+            _clear_preview_messages(pending["storage_payload"], pending["moderation_message_id"])
+        safe_delete_message(admin, message.message_id)
+        pending_scheduled_publications.pop(message.from_user.id, None)
+        predlojka_bot.send_message(
+            admin,
+            f"Публикацию запланировала на {publish_at.strftime('%d.%m.%Y %H:%M')}.\nID задачи: {record_id}",
+        )
+        log_event(
+            "post_scheduled",
+            bot="predlojka",
+            user_id=message.from_user.id,
+            chat_id=message.chat.id,
+            metadata={
+                "schedule_id": record_id,
+                "publish_at": publish_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "content_type": pending["content_type"],
+                "source_user_id": pending["source_user_id"],
+            },
+        )
+    except Exception as error:
+        _restore_scheduled_pending(pending)
+        pending_scheduled_publications.pop(message.from_user.id, None)
+        logger.error(f"Не удалось сохранить отложенную публикацию: {error}")
+        predlojka_bot.reply_to(message, "Не получилось сохранить публикацию. Вернула её в очередь модерации.")
 
 
 def _request_question_answer(call, payload: dict) -> None:
     pending_question_answers[call.from_user.id] = {
         "payload": payload,
         "moderation_message_id": call.message.message_id,
+        "action": "publish",
     }
     prompt = predlojka_bot.send_message(
         admin,
@@ -597,6 +954,26 @@ def _request_question_answer(call, payload: dict) -> None:
         chat_id=call.message.chat.id,
         metadata={"source_user_id": payload["source_user_id"], "content_type": payload["content_type"]},
     )
+
+
+def _request_question_answer_for_action(call, payload: dict, action: str) -> None:
+    pending_question_answers[call.from_user.id] = {
+        "payload": payload,
+        "moderation_message_id": call.message.message_id,
+        "action": action,
+    }
+    action_text = {
+        "publish": "опубликую",
+        "schedule": "подготовлю к отложенной публикации",
+        "draft": "сохраню в черновик",
+    }[action]
+    prompt = predlojka_bot.send_message(
+        admin,
+        f"Напиши ответ текстом, и я {action_text} вопрос одним готовым постом.\n\nЕсли передумал, напиши /cancel_question_answer",
+        reply_to_message_id=call.message.message_id,
+    )
+    predlojka_bot.register_next_step_handler(prompt, handle_question_answer_input)
+    predlojka_bot.answer_callback_query(call.id, "Жду текст ответа.")
 
 
 def handle_question_answer_input(message):
@@ -623,26 +1000,58 @@ def handle_question_answer_input(message):
 
     payload = pending["payload"]
     moderation_message_id = pending["moderation_message_id"]
+    action = pending.get("action", "publish")
+    ready_payload = _build_ready_question_payload(payload, answer_text)
 
     try:
-        _publish_question_with_answer(payload, answer_text)
-        _clear_preview_messages(payload, moderation_message_id)
-        safe_delete_message(admin, message.message_id)
-        pending_question_answers.pop(message.from_user.id, None)
-        predlojka_bot.send_message(admin, "Вопрос с вашим прелестным ответом опубликован в канале! (｡•̀ᴗ-)✧")
-        log_event(
-            "question_approved",
-            bot="predlojka",
-            user_id=message.from_user.id,
-            chat_id=message.chat.id,
-            metadata={"source_user_id": payload["source_user_id"], "content_type": payload["content_type"], "answer_length": len(answer_text)},
-        )
-        logger.info("Вопрос с ответом опубликован")
+        if action == "publish":
+            _publish_payload(ready_payload)
+            _clear_preview_messages(ready_payload, moderation_message_id)
+            safe_delete_message(admin, message.message_id)
+            pending_question_answers.pop(message.from_user.id, None)
+            predlojka_bot.send_message(admin, "Вопрос с вашим прелестным ответом опубликован в канале! (｡•̀ᴗ-)✧")
+            log_event(
+                "question_approved",
+                bot="predlojka",
+                user_id=message.from_user.id,
+                chat_id=message.chat.id,
+                metadata={"source_user_id": payload["source_user_id"], "content_type": ready_payload["content_type"], "answer_length": len(answer_text)},
+            )
+            logger.info("Вопрос с ответом опубликован")
+            return
+
+        if action == "draft":
+            _save_single_payload_as_draft(ready_payload, moderation_message_id, message.from_user.id, message.chat.id)
+            safe_delete_message(admin, message.message_id)
+            pending_question_answers.pop(message.from_user.id, None)
+            return
+
+        if action == "schedule":
+            pending_question_answers.pop(message.from_user.id, None)
+            safe_delete_message(admin, message.message_id)
+            pending_payload = {
+                "queue_type": "single",
+                "queue_payload": None,
+                "storage_payload": ready_payload,
+                "content_type": ready_payload["content_type"],
+                "is_question": ready_payload["is_question"],
+                "is_anonymous": ready_payload["is_anonymous"],
+                "source_user_id": ready_payload["source_user_id"],
+                "moderation_message_id": moderation_message_id,
+            }
+            _request_schedule_datetime(
+                message.from_user.id,
+                pending_payload,
+                reply_to_message_id=moderation_message_id,
+            )
+            return
+
+        raise ValueError(f"Неизвестное действие для вопроса: {action}")
     except Exception as error:
         moderation_queue[moderation_message_id] = payload
         pending_question_answers.pop(message.from_user.id, None)
         logger.error(f"Ошибка при публикации вопроса с ответом: {error}")
-        predlojka_bot.reply_to(message, "Не получилось опубликовать вопрос с ответом.. Вернула его в очередь модерации!")
+        predlojka_bot.reply_to(message, "Не получилось обработать вопрос с ответом. Вернула его в очередь модерации!")
 
 
 def _request_direct_message_answer(call, payload: dict) -> None:
@@ -792,14 +1201,7 @@ def accepter(message):
 
 
 def _build_album_media(items: list, publish_caption: str) -> list:
-    media = []
-    for index, item in enumerate(items):
-        caption = publish_caption if index == 0 else None
-        if item.content_type == "photo":
-            media.append(types.InputMediaPhoto(item.photo[-1].file_id, caption=caption))
-        elif item.content_type == "video":
-            media.append(types.InputMediaVideo(item.video.file_id, caption=caption))
-    return media
+    return _deserialize_album_media(_serialize_album_media(items, publish_caption))
 
 
 def process_media_group_for_moderation(media_group_id: str) -> None:
@@ -823,7 +1225,9 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
 
         user_name = _display_name(user)
         publish_caption = _compose_publish_text(content, user_name)
-        media = _build_album_media(items, publish_caption)
+        platform_post = _build_platform_post_from_album(items, content)
+        serialized_media = _serialize_album_media(items, publish_caption)
+        media = _deserialize_album_media(serialized_media)
 
         if not media:
             logger.error("Медиагруппа отклонена: нет поддерживаемых медиафайлов")
@@ -843,10 +1247,15 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
             reply_markup=_build_moderation_markup(is_album=True),
         )
         album_queue[control_message.message_id] = {
-            "media": media,
             "preview_ids": [item.message_id for item in sent_preview],
             "is_question": content.is_question,
+            "is_anonymous": content.is_anonymous,
             "source_user_id": user.id,
+        }
+        album_media_cache[control_message.message_id] = {
+            "media": serialized_media,
+            "publish_text": publish_caption,
+            "post_data": _serialize_post(platform_post),
         }
         log_event(
             "album_submitted",
@@ -862,48 +1271,99 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
 
 @predlojka_bot.callback_query_handler(func=lambda call: call.data == "mod_album:approve")
 def accept_album(call):
-    payload = album_queue.pop(call.message.message_id, None)
-    if payload is None:
+    queue_payload = album_queue.pop(call.message.message_id, None)
+    media_payload = album_media_cache.pop(call.message.message_id, None)
+    if queue_payload is None or media_payload is None:
+        if queue_payload is not None:
+            album_queue[call.message.message_id] = queue_payload
+        if media_payload is not None:
+            album_media_cache[call.message.message_id] = media_payload
         r = "Этот альбом уже обработан или устарел."
         predlojka_bot.answer_callback_query(call.id, r)
         return
 
-    sent = safe_send_media_group(channel, payload["media"])
-    if not sent:
-        album_queue[call.message.message_id] = payload
+    try:
+        _publish_album_payload(media_payload)
+    except Exception as error:
+        album_queue[call.message.message_id] = queue_payload
+        album_media_cache[call.message.message_id] = media_payload
+        logger.error(f"Ошибка при публикации альбома: {error}")
         predlojka_bot.answer_callback_query(call.id, "Не получилось опубликовать альбом.")
         return
 
-    for preview_id in payload["preview_ids"]:
-        safe_delete_message(admin, preview_id)
-    safe_delete_message(admin, call.message.message_id)
+    _clear_album_preview(queue_payload, call.message.message_id)
     predlojka_bot.answer_callback_query(call.id, "Альбом опубликован!")
     log_event(
         "album_approved",
         bot="predlojka",
         user_id=call.from_user.id,
         chat_id=call.message.chat.id,
-        metadata={"source_user_id": payload["source_user_id"], "is_question": payload["is_question"]},
+        metadata={"source_user_id": queue_payload["source_user_id"], "is_question": queue_payload["is_question"]},
     )
 
 
 @predlojka_bot.callback_query_handler(func=lambda call: call.data == "mod_album:reject")
 def reject_album(call):
-    payload = album_queue.pop(call.message.message_id, None)
-    if payload is None:
+    queue_payload = album_queue.pop(call.message.message_id, None)
+    album_media_cache.pop(call.message.message_id, None)
+    if queue_payload is None:
         predlojka_bot.answer_callback_query(call.id, "Боюсь, этот альбом уже обработан или устарел... ")
         return
 
-    for preview_id in payload["preview_ids"]:
-        safe_delete_message(admin, preview_id)
-    safe_delete_message(admin, call.message.message_id)
+    _clear_album_preview(queue_payload, call.message.message_id)
     predlojka_bot.answer_callback_query(call.id, "Альбом отклонён! (￣^￣)ゞ")
     log_event(
         "album_rejected",
         bot="predlojka",
         user_id=call.from_user.id,
         chat_id=call.message.chat.id,
-        metadata={"source_user_id": payload["source_user_id"], "is_question": payload["is_question"]},
+        metadata={"source_user_id": queue_payload["source_user_id"], "is_question": queue_payload["is_question"]},
+    )
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data == "mod_album:draft")
+def draft_album(call):
+    queue_payload = album_queue.pop(call.message.message_id, None)
+    storage_payload = album_media_cache.pop(call.message.message_id, None)
+    if queue_payload is None or storage_payload is None:
+        if queue_payload is not None:
+            album_queue[call.message.message_id] = queue_payload
+        if storage_payload is not None:
+            album_media_cache[call.message.message_id] = storage_payload
+        predlojka_bot.answer_callback_query(call.id, "Этот альбом уже обработан или устарел.")
+        return
+
+    _save_album_payload_as_draft(queue_payload, storage_payload, call.message.message_id, call.from_user.id, call.message.chat.id)
+    predlojka_bot.answer_callback_query(call.id, "Альбом сохранён в черновиках.")
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data == "mod_album:schedule")
+def schedule_album(call):
+    queue_payload = album_queue.pop(call.message.message_id, None)
+    media_payload = album_media_cache.pop(call.message.message_id, None)
+    if queue_payload is None or media_payload is None:
+        if queue_payload is not None:
+            album_queue[call.message.message_id] = queue_payload
+        if media_payload is not None:
+            album_media_cache[call.message.message_id] = media_payload
+        predlojka_bot.answer_callback_query(call.id, "Этот альбом уже обработан или устарел.")
+        return
+
+    pending_payload = {
+        "queue_type": "album",
+        "queue_payload": queue_payload,
+        "storage_payload": media_payload,
+        "content_type": "album",
+        "is_question": queue_payload["is_question"],
+        "is_anonymous": queue_payload["is_anonymous"],
+        "source_user_id": queue_payload["source_user_id"],
+        "moderation_message_id": call.message.message_id,
+    }
+    _request_schedule_datetime(
+        call.from_user.id,
+        pending_payload,
+        reply_to_message_id=call.message.message_id,
+        callback_query_id=call.id,
     )
 
 
@@ -914,7 +1374,7 @@ def sender(call):
         predlojka_bot.answer_callback_query(call.id, "Эта запись уже обработана или устарела... (◔~◔)")
         return
 
-    if payload["is_question"]:
+    if payload["is_question"] and not payload.get("question_answer_bundle"):
         _request_question_answer(call, payload)
         return
 
@@ -953,6 +1413,50 @@ def denier(call):
         metadata={"source_user_id": payload["source_user_id"], "content_type": payload["content_type"]},
     )
     logger.info("Пост отклонён")
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data == "mod:draft")
+def draft_single_post(call):
+    payload = moderation_queue.pop(call.message.message_id, None)
+    if payload is None:
+        predlojka_bot.answer_callback_query(call.id, "Эта запись уже обработана или устарела.")
+        return
+
+    if payload["is_question"] and not payload.get("question_answer_bundle"):
+        _request_question_answer_for_action(call, payload, "draft")
+        return
+
+    _save_single_payload_as_draft(payload, call.message.message_id, call.from_user.id, call.message.chat.id)
+    predlojka_bot.answer_callback_query(call.id, "Запись сохранена в черновиках.")
+
+
+@predlojka_bot.callback_query_handler(func=lambda call: call.data == "mod:schedule")
+def schedule_single_post(call):
+    payload = moderation_queue.pop(call.message.message_id, None)
+    if payload is None:
+        predlojka_bot.answer_callback_query(call.id, "Эта запись уже обработана или устарела.")
+        return
+
+    if payload["is_question"] and not payload.get("question_answer_bundle"):
+        _request_question_answer_for_action(call, payload, "schedule")
+        return
+
+    pending_payload = {
+        "queue_type": "single",
+        "queue_payload": None,
+        "storage_payload": dict(payload),
+        "content_type": payload["content_type"],
+        "is_question": payload["is_question"],
+        "is_anonymous": payload["is_anonymous"],
+        "source_user_id": payload["source_user_id"],
+        "moderation_message_id": call.message.message_id,
+    }
+    _request_schedule_datetime(
+        call.from_user.id,
+        pending_payload,
+        reply_to_message_id=call.message.message_id,
+        callback_query_id=call.id,
+    )
 
 
 @predlojka_bot.callback_query_handler(func=lambda call: call.data == "dm:reply")
@@ -1004,6 +1508,65 @@ def st_sender_legacy(call):
 @predlojka_bot.callback_query_handler(func=lambda call: call.data == "-")
 def denier_legacy(call):
     predlojka_bot.answer_callback_query(call.id, "Эта старая кнопка модерации уже неактивна.")
+
+
+def publish_due_scheduled_posts() -> None:
+    if not scheduled_publish_lock.acquire(blocking=False):
+        return
+
+    try:
+        due_posts = get_due_scheduled_posts()
+        for record in due_posts:
+            try:
+                if record["content_type"] == "album":
+                    _publish_album_payload(record["payload"])
+                else:
+                    _publish_payload(record["payload"])
+                remove_scheduled_post(record["doc_id"])
+                log_event(
+                    "scheduled_post_published",
+                    bot="predlojka",
+                    metadata={
+                        "schedule_id": record["doc_id"],
+                        "content_type": record["content_type"],
+                        "source_user_id": record["source_user_id"],
+                    },
+                )
+            except Exception as error:
+                logger.error(f"Не удалось опубликовать отложенную запись {record['doc_id']}: {error}")
+    finally:
+        scheduled_publish_lock.release()
+
+
+def _ensure_user_for_post(post: Post, *, first_name: str | None = None, last_name: str | None = None) -> int:
+    storage_user_id = to_storage_user_id(post.origin.platform, post.origin.user_id)
+    if not user_exists(storage_user_id):
+        create_user_if_missing(storage_user_id, first_name or post.author.display_name, last_name)
+    return storage_user_id
+
+
+def submit_external_post(post: Post, *, acknowledge_callback=None) -> None:
+    _ensure_user_for_post(post)
+    storage_user_id = to_storage_user_id(post.origin.platform, post.origin.user_id)
+    add_to_post_counter(storage_user_id)
+
+    if acknowledge_callback is not None:
+        acknowledge_callback(post)
+
+    _send_external_admin_preview(post)
+    log_event(
+        "question_submitted" if post.is_question else "post_submitted",
+        bot="predlojka",
+        user_id=storage_user_id,
+        chat_id=int(post.origin.chat_id),
+        metadata={
+            "source_platform": post.origin.platform.value,
+            "content_type": post.content_type_label,
+            "anonymous": post.is_anonymous,
+            "tags": post.public_tags,
+        },
+    )
+    logger.info(f"Получена запись для модерации: {post.content_type_label} ({post.origin.platform.value})")
 
 
 @predlojka_bot.message_handler(content_types=["photo", "video"])

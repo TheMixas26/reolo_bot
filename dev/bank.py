@@ -8,7 +8,7 @@ from config import bank_bot
 from database.sqlite_db import get_balance, set_balance, user_exists
 from settings import BANK_TRANSFER_COMMISSION, CURRENCY_NAME_GENITIVE
 
-CURRENCY_INFO_PATH = Path("varibles/currency_info.pickle")
+CURRENCY_INFO_PATH = Path("dev/varibles/currency_info.pickle")
 
 
 def edit_currency_info(message, bats: int, rubles: int) -> None:

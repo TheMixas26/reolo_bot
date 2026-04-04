@@ -1,9 +1,11 @@
 """Точка входа в бота, запускайте именно этот файл."""
 
 from analytics.stats import log_event
-from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, predlojka_handlers, bank_handlers
+from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, predlojka_handlers, bank_handlers, vk_handlers
 from handlers.card_handlers import callbacks as card_callbacks
 from handlers.card_handlers import commands as card_commands
+from posting.runtime import vk_adapter
+from utils.schedulers import scheduler
 
 import logging
 from threading import Thread
@@ -53,6 +55,17 @@ if __name__ == "__main__":
     # Очищаем лог-файл
     with open('bot_errors.log', 'w') as f:
         f.write("=== Новая сессия ===\n")
+
+    if scheduler.get_job("publish_scheduled_posts") is None:
+        scheduler.add_job(
+            predlojka_handlers.publish_due_scheduled_posts,
+            "interval",
+            minutes=1,
+            id="publish_scheduled_posts",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=120,
+        )
     
     logger.info("⚠️ ЗАПУСК БОТА В DEBUG MODE!!!!") if DEBUG_MODE else logger.info("🎮 Запускаю всех ботов...") 
     log_event("system_bootstrap", bot="system", metadata={"debug_mode": DEBUG_MODE})
@@ -70,6 +83,11 @@ if __name__ == "__main__":
     t2 = Thread(target=run_bot, args=(rpg_bot, "RPG", "rpg"), daemon=True)
     t2.start()
     threads.append(t2)
+
+    if vk_adapter is not None:
+        t_vk = Thread(target=vk_handlers.run_vk_listener, daemon=True)
+        t_vk.start()
+        threads.append(t_vk)
 
     if DEBUG_MODE:
         pass
