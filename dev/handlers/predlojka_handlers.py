@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import threading
 import time
 from datetime import datetime
@@ -20,7 +19,7 @@ from database.sqlite_db import add_to_post_counter, create_user_if_missing, user
 from posting.models import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin
 from posting.platform_ids import to_storage_user_id
 from posting.runtime import post_publisher, telegram_adapter, telegram_admin_target
-from posting.services import PostFormatter
+from posting.services import PostFormatter, PostParser
 from utils.utils import thx_for_message
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -44,20 +43,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 VARIBLES_DIR = BASE_DIR / "varibles"
 EVENT_LIBRARY_PATH = VARIBLES_DIR / "events_library.txt"
 REPORT_LIBRARY_PATH = VARIBLES_DIR / "reports_library.txt"
-TAG_ALIASES = {
-    "#анон": "#anon",
-    "#anon": "#anon",
-    "#вопрос": "#question",
-    "#question": "#question",
-    "#ai": "#ai",
-    "#ignore": "#ignore",
-    "#event": "#event",
-    "#report": "#report",
-    "#message": "#message",
-    "#dm": "#message",
-}
-CONTROL_TAGS = set(TAG_ALIASES.values())
-TAG_PATTERN = re.compile(r"(?<!\w)#[\wа-яА-ЯёЁ]+", re.UNICODE)
 BLOCKED_SUBMISSION_CHATS = {channel, channel_red, chat_mishas_den}
 ADVICE_MESSAGES = [
     "Совет вы можете написать в посте тег <code>#anon</code> или <code>#анон</code> - бот не будет указывать ваше имя в публикации.",
@@ -204,45 +189,15 @@ def _can_submit_service_message(chat_id: int) -> bool:
 
 
 def _parse_submission_text(text: str | None) -> SubmissionContent:
-    raw_text = text or ""
-    public_tags: list[str] = []
-    seen_tags: set[str] = set()
-    flags = {tag: False for tag in CONTROL_TAGS}
-
-    def _replace_tag(match: re.Match[str]) -> str:
-        tag = match.group(0)
-        normalized = tag.lower()
-        canonical = TAG_ALIASES.get(normalized, normalized)
-        if canonical in flags:
-            flags[canonical] = True
-        else:
-            public_tag = canonical
-            if public_tag not in seen_tags:
-                seen_tags.add(public_tag)
-                public_tags.append(public_tag)
-        return ""
-
-    clean_text = TAG_PATTERN.sub(_replace_tag, raw_text)
-    clean_text = re.sub(r"[ \t]+", " ", clean_text)
-    clean_text = re.sub(r" *\n *", "\n", clean_text)
-    clean_text = re.sub(r"\n{3,}", "\n\n", clean_text).strip()
-
-    route = "post"
-    if flags["#message"]:
-        route = "message"
-    elif flags["#report"]:
-        route = "report"
-    elif flags["#event"]:
-        route = "event"
-
+    parsed = PostParser.parse_submission_text(text)
     return SubmissionContent(
-        clean_text=clean_text,
-        public_tags=public_tags,
-        is_anonymous=flags["#anon"],
-        is_question=flags["#question"] and route == "post",
-        wants_ai=flags["#ai"],
-        ignore_reaction=flags["#ignore"],
-        route=route,
+        clean_text=parsed.clean_text,
+        public_tags=list(parsed.public_tags),
+        is_anonymous=parsed.is_anonymous,
+        is_question=parsed.is_question,
+        wants_ai=parsed.wants_ai,
+        ignore_reaction=parsed.ignore_reaction,
+        route=parsed.route,
     )
 
 
@@ -1115,7 +1070,7 @@ def handle_direct_message_answer_input(message):
 def _handle_ai_request(message, content: SubmissionContent) -> None:
     name = _display_name(message.from_user)
     prompt_text = content.clean_text or message.text
-    response_message = predlojka_bot.reply_to(message, "Думаю... (*￣3￣)╭")
+    response_message = None if content.ignore_reaction else predlojka_bot.reply_to(message, "Думаю... (*￣3￣)╭")
     loop = None
     log_event("ai_requested", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
 
@@ -1130,7 +1085,10 @@ def _handle_ai_request(message, content: SubmissionContent) -> None:
             return full_response
 
         full_text = loop.run_until_complete(_get_ai_response())
-        predlojka_bot.edit_message_text(full_text, chat_id=message.chat.id, message_id=response_message.message_id)
+        if response_message is not None:
+            predlojka_bot.edit_message_text(full_text, chat_id=message.chat.id, message_id=response_message.message_id)
+        elif not content.ignore_reaction:
+            predlojka_bot.send_message(message.chat.id, full_text)
         log_event("ai_completed", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
     except Exception as error:
         logger.error(f"Ошибка в AI-запросе: {error}")
@@ -1142,13 +1100,17 @@ def _handle_ai_request(message, content: SubmissionContent) -> None:
             metadata={"error": str(error)[:300]},
         )
         try:
-            predlojka_bot.edit_message_text(
-                "Извините, что-то пошло не так... Попробуй ещё раз позже (^_^;)",
-                chat_id=message.chat.id,
-                message_id=response_message.message_id,
-            )
+            if response_message is not None:
+                predlojka_bot.edit_message_text(
+                    "Извините, что-то пошло не так... Попробуй ещё раз позже (^_^;)",
+                    chat_id=message.chat.id,
+                    message_id=response_message.message_id,
+                )
+            elif not content.ignore_reaction:
+                predlojka_bot.send_message(message.chat.id, "Извините, что-то пошло не так... Попробуй ещё раз позже (^_^;)")
         except Exception:
-            predlojka_bot.send_message(message.chat.id, "Извините, ошибка обработки...")
+            if not content.ignore_reaction:
+                predlojka_bot.send_message(message.chat.id, "Извините, ошибка обработки...")
     finally:
         if loop is not None:
             loop.close()
@@ -1157,6 +1119,9 @@ def _handle_ai_request(message, content: SubmissionContent) -> None:
 def _submit_single_message(message) -> None:
     content_text = message.text if message.content_type == "text" else message.caption
     content = _parse_submission_text(content_text)
+
+    if content.ignore_reaction:
+        return
 
     if content.route == "post" and message.content_type == "text" and content.wants_ai and _can_use_ai(message.chat.id):
         _handle_ai_request(message, content)
@@ -1214,6 +1179,8 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
         user = items[0].from_user
         captions = [item.caption for item in items if item.caption]
         content = _parse_submission_text("\n".join(captions))
+        if content.ignore_reaction:
+            return
         if content.route == "post" and not _can_submit_post(items[0].chat.id):
             return
         if content.route != "post" and not _can_submit_service_message(items[0].chat.id):

@@ -27,7 +27,7 @@ CONTROL_TAGS = {
     "#report": "route_report",
     "#message": "route_message",
 }
-TAG_PATTERN = re.compile(r"(?<!\w)#[\wа-яА-ЯёЁ]+", re.UNICODE)
+TAG_PATTERN = re.compile(r"#[\wа-яА-ЯёЁ]+", re.UNICODE)
 
 
 @dataclass(slots=True)
@@ -43,6 +43,14 @@ class ParsedSubmission:
 
 class PostParser:
     @staticmethod
+    def _normalize_submission_text(text: str) -> str:
+        normalized = re.sub(r"[ \t]+", " ", text)
+        normalized = re.sub(r" *\n *", "\n", normalized)
+        normalized = re.sub(r" +([,.;:!?])", r"\1", normalized)
+        normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+        return normalized.strip()
+
+    @staticmethod
     def parse_submission_text(text: str | None) -> ParsedSubmission:
         raw_text = text or ""
         public_tags: list[str] = []
@@ -57,8 +65,7 @@ class PostParser:
             "route_message": False,
         }
 
-        def _replace_tag(match: re.Match[str]) -> str:
-            tag = match.group(0).lower()
+        def _handle_tag(tag: str) -> None:
             canonical = TAG_ALIASES.get(tag, tag)
             flag_name = CONTROL_TAGS.get(canonical)
             if flag_name:
@@ -66,12 +73,30 @@ class PostParser:
             elif canonical not in seen_tags:
                 seen_tags.add(canonical)
                 public_tags.append(canonical)
-            return ""
 
-        clean_text = TAG_PATTERN.sub(_replace_tag, raw_text)
-        clean_text = re.sub(r"[ \t]+", " ", clean_text)
-        clean_text = re.sub(r" *\n *", "\n", clean_text)
-        clean_text = re.sub(r"\n{3,}", "\n\n", clean_text).strip()
+        parts: list[str] = []
+        last_index = 0
+        previous_tag_end: int | None = None
+        for match in TAG_PATTERN.finditer(raw_text):
+            start, end = match.span()
+            previous_char = raw_text[start - 1] if start > 0 else ""
+            starts_new_tag = (
+                start == 0
+                or not (previous_char.isalnum() or previous_char == "_")
+                or previous_tag_end == start
+            )
+            if not starts_new_tag:
+                previous_tag_end = None
+                continue
+
+            parts.append(raw_text[last_index:start])
+            _handle_tag(match.group(0).lower())
+            last_index = end
+            previous_tag_end = end
+
+        parts.append(raw_text[last_index:])
+        clean_text = "".join(parts)
+        clean_text = PostParser._normalize_submission_text(clean_text)
 
         route = "post"
         if flags["route_message"]:

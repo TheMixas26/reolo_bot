@@ -1,4 +1,4 @@
-from dev.handlers.predlojka_handlers import publish_due_scheduled_posts
+from handlers.predlojka_handlers import publish_due_scheduled_posts
 from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications, send_birthday_congratulation
 from apscheduler.schedulers.background import BackgroundScheduler
 from utils.weather import send_weather

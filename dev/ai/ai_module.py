@@ -77,7 +77,7 @@ def clean_ai_tag(text):
     return re.sub(r'#ai\b', '', text, flags=re.IGNORECASE).strip()
 
 async def stream_ai(user_text, name):
-    if '#ai' not in user_text.lower():
+    if not (user_text or "").strip():
         return
     
     additional_text = ADDITIONAL_TEMPLATE.format(name=name)
@@ -124,7 +124,7 @@ def ask_ai(user_text, name):
     """
     Синхронная обертка для вызова асинхронной функции
     """
-    if '#ai' not in user_text.lower():
+    if not (user_text or "").strip():
         return None
     
     try:
