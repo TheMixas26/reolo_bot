@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from config import rpg_bot
 from database.sqlite_db import get_balance, get_inventory
+from posting.runtime import rpg_telegram_adapter
 
 from card_game.formatters import (
     format_invite,
@@ -26,11 +27,11 @@ from handlers.card_handlers.keyboards import (
 
 def send_pack_menu(chat_id: int, user_id: int, packs: list[dict]):
     balance = int(get_balance(user_id))
-    return rpg_bot.send_message(chat_id, format_pack_menu(packs, balance), parse_mode="HTML", reply_markup=build_pack_keyboard(packs))
+    return rpg_telegram_adapter.send_message(chat_id, format_pack_menu(packs, balance), parse_mode="HTML", reply_markup=build_pack_keyboard(packs))
 
 
 def show_lobby_invite(lobby) -> None:
-    rpg_bot.edit_message_text(
+    rpg_telegram_adapter.edit_message_text(
         format_invite(lobby),
         chat_id=lobby.chat_id,
         message_id=lobby.message_id,
@@ -59,7 +60,7 @@ def show_lobby_selection(lobby) -> None:
             can_ready=len(selected_cards) == TEAM_SIZE,
         )
 
-    rpg_bot.edit_message_text(
+    rpg_telegram_adapter.edit_message_text(
         format_selection_prompt(lobby, TEAM_SIZE),
         chat_id=lobby.chat_id,
         message_id=lobby.message_id,
@@ -69,7 +70,7 @@ def show_lobby_selection(lobby) -> None:
 
 
 def show_lobby_started(lobby, session) -> None:
-    rpg_bot.edit_message_text(
+    rpg_telegram_adapter.edit_message_text(
         f"{format_lobby_ready(lobby)}\n\n{session.get_state()}",
         chat_id=lobby.chat_id,
         message_id=lobby.message_id,
@@ -82,7 +83,7 @@ def update_battle_message(chat_id: int, message_id: int, session, extra_text: st
     if extra_text:
         text = f"{extra_text}\n\n{text}"
     reply_markup = None if session.finished else get_battle_keyboard(session)
-    rpg_bot.edit_message_text(
+    rpg_telegram_adapter.edit_message_text(
         text,
         chat_id=chat_id,
         message_id=message_id,

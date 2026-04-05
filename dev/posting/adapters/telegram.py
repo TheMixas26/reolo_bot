@@ -104,8 +104,35 @@ class TelegramAdapter(SocialAdapter):
     def send_text(self, chat_id: int | str, text: str, **kwargs):
         return self.bot.send_message(chat_id, text, **kwargs)
 
+    def send_message(self, chat_id: int | str, text: str, **kwargs):
+        return self.send_text(chat_id, text, **kwargs)
+
     def reply_to(self, message, text: str, **kwargs):
         return self.bot.reply_to(message, text, **kwargs)
+
+    def send_document(self, chat_id: int | str, document, **kwargs):
+        return self.bot.send_document(chat_id, document, **kwargs)
+
+    def send_photo(self, chat_id: int | str, photo, **kwargs):
+        return self.bot.send_photo(chat_id, photo, **kwargs)
+
+    def send_video(self, chat_id: int | str, video, **kwargs):
+        return self.bot.send_video(chat_id, video, **kwargs)
+
+    def send_audio(self, chat_id: int | str, audio, **kwargs):
+        return self.bot.send_audio(chat_id, audio, **kwargs)
+
+    def send_voice(self, chat_id: int | str, voice, **kwargs):
+        return self.bot.send_voice(chat_id, voice, **kwargs)
+
+    def send_sticker(self, chat_id: int | str, sticker, **kwargs):
+        return self.bot.send_sticker(chat_id, sticker, **kwargs)
+
+    def send_media_group(self, chat_id: int | str, media, **kwargs):
+        return self.bot.send_media_group(chat_id, media, **kwargs)
+
+    def copy_message(self, chat_id: int | str, from_chat_id: int | str, message_id: int | str, **kwargs):
+        return self.bot.copy_message(chat_id, from_chat_id, message_id, **kwargs)
 
     def edit_message_text(self, text: str, *, chat_id: int | str, message_id: int | str, **kwargs):
         return self.bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, **kwargs)

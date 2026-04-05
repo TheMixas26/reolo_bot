@@ -3,5 +3,4 @@ telebot>=0.0.5
 requests>=2.32.5
 apscheduler>=3.11.2
 quickjs>=1.19.4
-sqlite3
 tinydb>=4.8.2

@@ -2,16 +2,17 @@ from config import predlojka_bot, admin, chat_mishas_den
 from database.sqlite_db import user_exists, create_user_if_missing, get_birthday, set_personal_notify
 from utils.birthdays import add_birthday, add_birthday_by_username
 from analytics.stats import log_command_usage, log_event
+from posting.runtime import predlojka_telegram_adapter
 from settings import MAIN_BOT_NAME, PROJECT_NAME, RPG_BOT_NAME, RPG_BOT_USERNAME, render_text_template
 
 @predlojka_bot.message_handler(commands=['start'])
 def start(message):
     log_command_usage("predlojka", "start", message)
     if user_exists(message.from_user.id):
-        predlojka_bot.reply_to(message, text=f"С возвращением в {MAIN_BOT_NAME}! Ожидаем постов)")
+        predlojka_telegram_adapter.reply_to(message, text=f"С возвращением!!! Ожидаем постов)")
     else:
         create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
-        predlojka_bot.reply_to(message, text=f"Добро пожаловать в {PROJECT_NAME}!")
+        predlojka_telegram_adapter.reply_to(message, text=f"Добро пожаловать в бота \"{PROJECT_NAME}!\"")
         # TODO: нормальное привествие новых пользователей
         log_event("user_registered", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
 
@@ -24,7 +25,7 @@ def changelog(message):
     name = None
 
     try:
-        with open('varibles/changelog.txt', mode='r', encoding='utf-8') as f:
+        with open('dev/varibles/changelog.txt', mode='r', encoding='utf-8') as f:
             for line in f:
                 if "BUILD" in line and build is None:
                     build = line.split("BUILD")[1].strip(" | \n")
@@ -36,8 +37,8 @@ def changelog(message):
 
             bot_version = f"{build} - {name}"
 
-        with open('varibles/changelog.txt', mode='r', encoding='utf-8') as f:
-            predlojka_bot.send_document(
+        with open('dev/varibles/changelog.txt', mode='r', encoding='utf-8') as f:
+            predlojka_telegram_adapter.send_document(
                 message.chat.id, f,
                 reply_to_message_id=message.message_id,
                 caption=f"Вот моя история обновлений! Текущая версия: <b>{bot_version}</b>",
@@ -45,7 +46,7 @@ def changelog(message):
             )
     except Exception as e:
         print(e)
-        predlojka_bot.reply_to(
+        predlojka_telegram_adapter.reply_to(
             message,
             text="Не удалось загрузить Информацию о последнем обновлении. (X_X)\nТеперь меня снова закроют в подвале и больше никогда не запустят... (≧ ﹏ ≦)"
         )
@@ -59,12 +60,12 @@ def changelog(message):
 def help(message):
     log_command_usage("predlojka", "help", message)
     try:
-        with open('varibles/help_info.txt', mode='r', encoding='utf-8') as f:
+        with open('dev/varibles/help_info.txt', mode='r', encoding='utf-8') as f:
             help_string = render_text_template(f.read())
-        predlojka_bot.reply_to(message, text=help_string, parse_mode='HTML')
+        predlojka_telegram_adapter.reply_to(message, text=help_string, parse_mode='HTML')
     except Exception as e:
         print(e)
-        predlojka_bot.reply_to(
+        predlojka_telegram_adapter.reply_to(
             message,
             text="Не удалось загрузить справку. (X_X)\nТеперь меня снова закроют в подвале и больше никогда не запустят (≧ ﹏ ≦)"
         )
@@ -74,7 +75,7 @@ def help(message):
 @predlojka_bot.message_handler(commands=['battle'])
 def redirect_to_rpg_bot(message):
     log_command_usage("predlojka", "battle", message)
-    predlojka_bot.reply_to(
+    predlojka_telegram_adapter.reply_to(
         message,
         f"Притормози, дружище! Вся RPG система переехала в {RPG_BOT_NAME}. "
         f"Не волнуйся, формально это всё ещё я, просто вынесенная часть проекта. "
@@ -94,14 +95,14 @@ def handle_add_birthday_by_username(message):
         parts = message.text.split()
         if message.reply_to_message:
             if len(parts) != 2:
-                predlojka_bot.reply_to(message, "Формат в reply: /add_birthday_by_username ДД.ММ")
+                predlojka_telegram_adapter.reply_to(message, "Формат в reply: /add_birthday_by_username ДД.ММ")
                 return
             target = message.reply_to_message.from_user
             date_str = parts[1]
             name = f"{target.first_name or ''} {target.last_name or ''}".strip()
             ok = add_birthday(target.id, name, date_str)
             if ok:
-                predlojka_bot.reply_to(message, f"День рождения для {name} добавлен!")
+                predlojka_telegram_adapter.reply_to(message, f"День рождения для {name} добавлен!")
                 log_event(
                     "birthday_added_admin",
                     bot="predlojka",
@@ -110,18 +111,18 @@ def handle_add_birthday_by_username(message):
                     metadata={"target_user_id": target.id, "mode": "reply"},
                 )
             else:
-                predlojka_bot.reply_to(message, "Ошибка при добавлении. Вероятно, дело в дате!")
+                predlojka_telegram_adapter.reply_to(message, "Ошибка при добавлении. Вероятно, дело в дате!")
             return
 
         if len(parts) < 3:
-            predlojka_bot.reply_to(message, "Формат: /add_birthday_by_username username ДД.ММ")
+            predlojka_telegram_adapter.reply_to(message, "Формат: /add_birthday_by_username username ДД.ММ")
             return
         username = parts[1].lstrip('@')
         date_str = parts[2]
         chat_id = chat_mishas_den
         ok, name = add_birthday_by_username(username, date_str, chat_id)
         if ok:
-            predlojka_bot.reply_to(message, f"День рождения для {name} добавлен!")
+            predlojka_telegram_adapter.reply_to(message, f"День рождения для {name} добавлен!")
             log_event(
                 "birthday_added_admin",
                 bot="predlojka",
@@ -130,9 +131,9 @@ def handle_add_birthday_by_username(message):
                 metadata={"target_username": username, "mode": "username"},
             )
         else:
-            predlojka_bot.reply_to(message, "У меня ошибка при добавлении. Надёжнее всего использовать эту команду reply-ответом на сообщение пользователя. Так я точно вас не подведу!")
+            predlojka_telegram_adapter.reply_to(message, "У меня ошибка при добавлении. Надёжнее всего использовать эту команду reply-ответом на сообщение пользователя. Так я точно вас не подведу!")
     except Exception as e:
-        predlojka_bot.reply_to(message, f"Ошибка: {e}")
+        predlojka_telegram_adapter.reply_to(message, f"Ошибка: {e}")
 
 
 
@@ -142,19 +143,19 @@ def handle_add_birthday(message):
     try:
         parts = message.text.split()
         if len(parts) != 2:
-            predlojka_bot.reply_to(message, "Формат: /add_birthday ДД.ММ или /add_birthday ДД.ММ.ГГГГ")
+            predlojka_telegram_adapter.reply_to(message, "Формат: /add_birthday ДД.ММ или /add_birthday ДД.ММ.ГГГГ")
             return
         date_str = parts[1]
         user_id = message.from_user.id
         name = f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip()
         ok = add_birthday(user_id, name, date_str)
         if ok:
-            predlojka_bot.reply_to(message, "Ваш день рождения успешно добавлен!")
+            predlojka_telegram_adapter.reply_to(message, "Ваш день рождения успешно добавлен!")
             log_event("birthday_added_user", bot="predlojka", user_id=user_id, chat_id=message.chat.id)
         else:
-            predlojka_bot.reply_to(message, "Ошибка при добавлении. Проверьте формат даты.")
+            predlojka_telegram_adapter.reply_to(message, "Ошибка при добавлении. Проверьте формат даты.")
     except Exception as e:
-        predlojka_bot.reply_to(message, f"Ошибка: {e}")
+        predlojka_telegram_adapter.reply_to(message, f"Ошибка: {e}")
 
 @predlojka_bot.message_handler(commands=['personal_notifications'])
 def handle_personal_notifications(message):
@@ -172,8 +173,8 @@ def handle_personal_notifications(message):
             metadata={"enabled": not current},
         )
         if not current:
-            predlojka_bot.reply_to(message, "Личные уведомления о дне рождения включены!")
+            predlojka_telegram_adapter.reply_to(message, "Личные уведомления о дне рождения включены!")
         else:
-            predlojka_bot.reply_to(message, "Личные уведомления о дне рождения отключены!")
+            predlojka_telegram_adapter.reply_to(message, "Личные уведомления о дне рождения отключены!")
     else:
-        predlojka_bot.reply_to(message, "Сначала добавьте свой день рождения через /add_birthday.")
+        predlojka_telegram_adapter.reply_to(message, "Сначала добавьте свой день рождения через /add_birthday.")

@@ -6,6 +6,7 @@ from utils.birthdays import send_daily_birthdays, send_personal_birthday_notific
 from database.scheduled_posts_db import list_scheduled_posts
 from database.sqlite_db import get_all_users
 from analytics.stats import log_command_usage, log_event
+from posting.runtime import predlojka_telegram_adapter
 
 
 def _preview_scheduled_payload(payload: dict, content_type: str) -> str:
@@ -33,7 +34,7 @@ def show_scheduled_posts(message):
     rows = list_scheduled_posts(limit=30)
 
     if not rows:
-        predlojka_bot.reply_to(message, "В `scheduled_posts` пока пусто: ни черновиков, ни отложек нет.", parse_mode="Markdown")
+        predlojka_telegram_adapter.reply_to(message, "В `scheduled_posts` пока пусто: ни черновиков, ни отложек нет.", parse_mode="Markdown")
         return
 
     lines = ["Содержимое `scheduled_posts`:\n"]
@@ -47,17 +48,17 @@ def show_scheduled_posts(message):
             f"#{row['doc_id']} | {status_label} | {content_type} | {publish_at} | user {source_user_id}\n{preview}\n"
         )
 
-    predlojka_bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
+    predlojka_telegram_adapter.reply_to(message, "\n".join(lines), parse_mode="Markdown")
 
 
 @predlojka_bot.message_handler(commands=['edit_currency'])
 def editing_currency(message):
     log_command_usage("predlojka", "edit_currency", message)
     if message.chat.id == admin:
-        predlojka_bot.reply_to(message, "Агась! Жду циферки, баты и рубли через запятую.")
+        predlojka_telegram_adapter.reply_to(message, "Агась! Жду циферки, баты и рубли через запятую.")
         predlojka_bot.register_next_step_handler(message, editing_currency2)
     else:
-        predlojka_bot.reply_to(message, "Вы не администратор! Ну-ка перестаньте пытаться сломать экономику!!! (◣_◢)")
+        predlojka_telegram_adapter.reply_to(message, "Вы не администратор! Ну-ка перестаньте пытаться сломать экономику!!! (◣_◢)")
 
 def editing_currency2(message):
     try:
@@ -66,7 +67,7 @@ def editing_currency2(message):
         b = int(purumpurum[1])
         edit_currency_info(message, a, b)
     except Exception:
-        predlojka_bot.reply_to(message, "Извините, у меня тут не сраслось что-то...")
+        predlojka_telegram_adapter.reply_to(message, "Извините, у меня тут не сраслось что-то...")
 
 
 @predlojka_bot.message_handler(commands=['setcmd'])
@@ -93,7 +94,7 @@ def set_commands(message=None):
     log_event("commands_synced", bot="system", metadata={"triggered_by": message.from_user.id if message else "scheduler"})
 
     if message:
-        predlojka_bot.reply_to(message, "Команды обновлены! (⌒_⌒ )")
+        predlojka_telegram_adapter.reply_to(message, "Команды обновлены! (⌒_⌒ )")
 
 
 
@@ -128,28 +129,28 @@ def handle_fake_post(message):
         try:
             caption = message.reply_to_message.caption or message.reply_to_message.text or ""
             if caption:
-                predlojka_bot.copy_message(channel, message.chat.id, message.reply_to_message.message_id, caption=caption)
+                predlojka_telegram_adapter.copy_message(channel, message.chat.id, message.reply_to_message.message_id, caption=caption)
             else:
-                predlojka_bot.copy_message(channel, message.chat.id, message.reply_to_message.message_id)
-            predlojka_bot.reply_to(message, "Готово! Переслала отвеченное сообщение в канал)")
+                predlojka_telegram_adapter.copy_message(channel, message.chat.id, message.reply_to_message.message_id)
+            predlojka_telegram_adapter.reply_to(message, "Готово! Переслала отвеченное сообщение в канал)")
             log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "reply_copy"})
             return
         except Exception as e:
-            predlojka_bot.reply_to(message, f"(╥﹏╥) Не получилось переслать сообщение: {e}")
+            predlojka_telegram_adapter.reply_to(message, f"(╥﹏╥) Не получилось переслать сообщение: {e}")
             return
 
-    predlojka_bot.reply_to(message, r"Отлично! Злодействуем значит))) (⌐■‿■)\n\nНапиши пост \(подпись от человека висит на вас\)\n\nНа всякий напоминаю, `👤 {имя}`", parse_mode="MarkdownV2")
+    predlojka_telegram_adapter.reply_to(message, r"Отлично! Злодействуем значит))) (⌐■‿■)\n\nНапиши пост \(подпись от человека висит на вас\)\n\nНа всякий напоминаю, `👤 {имя}`", parse_mode="MarkdownV2")
     predlojka_bot.register_next_step_handler(message, handle_fake_post2)
 
 def handle_fake_post2(message):
     if message.from_user.id != admin:
         return
     try:
-        predlojka_bot.send_message(channel, message.text)
-        predlojka_bot.send_message(message.chat.id, "Готово! Пост улетел. Удачи с махинациями))) (¬‿¬)")
+        predlojka_telegram_adapter.send_message(channel, message.text)
+        predlojka_telegram_adapter.send_message(message.chat.id, "Готово! Пост улетел. Удачи с махинациями))) (¬‿¬)")
         log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "text"})
     except Exception as e:
-        predlojka_bot.send_message(message.chat.id, f"(╥﹏╥) Ошибка при отправке поста: {e}")
+        predlojka_telegram_adapter.send_message(message.chat.id, f"(╥﹏╥) Ошибка при отправке поста: {e}")
 
 
 
@@ -158,7 +159,7 @@ def stop_bot(message):
     if message.from_user.id != admin:
         return
     log_command_usage("predlojka", "stop_bot", message)
-    predlojka_bot.reply_to(message, "Самоликвидируюсь по приказу командования!!!!!")
+    predlojka_telegram_adapter.reply_to(message, "Самоликвидируюсь по приказу командования!!!!!")
     # TODO: пусть скидывает каритнку "при эвакуации выстрелить в серверную"
     SystemExit("Бот остановлен администратором")
 
@@ -169,7 +170,7 @@ def public_notify_command(message):
     if message.from_user.id != admin:
         return
     log_command_usage("predlojka", "broadcast", message)
-    predlojka_bot.reply_to(message, "Ого! (ノ°ο°)ノ\nУ нас тут рассылка намечается! Напишите сообщение, которое хотите разослать всем пользователям. А остальное оставьте на меня)) (⌐■ω■)")
+    predlojka_telegram_adapter.reply_to(message, "Ого! (ノ°ο°)ノ\nУ нас тут рассылка намечается! Напишите сообщение, которое хотите разослать всем пользователям. А остальное оставьте на меня)) (⌐■ω■)")
     predlojka_bot.register_next_step_handler(message, handle_public_notify)
 
 
@@ -181,14 +182,14 @@ def handle_public_notify(message):
         sent_count = 0
         for user in users:
             try:
-                predlojka_bot.send_message(user['user_id'], message.text)
+                predlojka_telegram_adapter.send_message(user['user_id'], message.text)
                 sent_count += 1
             except Exception as e:
                 print(f"Ошибка при отправке сообщения пользователю {user['user_id']}: {e}")
         log_event("broadcast_completed", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"sent_count": sent_count})
-        predlojka_bot.reply_to(message, "Рассылка завершена! Надеюсь там не было опечаток... (◠‿◠;;)")
+        predlojka_telegram_adapter.reply_to(message, "Рассылка завершена! Надеюсь там не было опечаток... (◠‿◠;;)")
     except Exception as e:
-        predlojka_bot.reply_to(message, f"(╥﹏╥) Ошибка при рассылке: {e}")
+        predlojka_telegram_adapter.reply_to(message, f"(╥﹏╥) Ошибка при рассылке: {e}")
 
 
 
@@ -199,4 +200,4 @@ def send_actual_db(message):
     log_command_usage("predlojka", "send_actual_db", message)
     backupDB()
     log_event("backup_requested", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
-    predlojka_bot.reply_to(message, "Резервная копия базы данных и файлов аналитики отправлена! Люблю свою работу!)) (^-^)")
+    predlojka_telegram_adapter.reply_to(message, "Резервная копия базы данных и файлов аналитики отправлена! Люблю свою работу!)) (^-^)")

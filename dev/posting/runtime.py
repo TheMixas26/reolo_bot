@@ -8,6 +8,9 @@ from posting.models import Platform, PostTarget
 from posting.services import PostPublisher
 
 telegram_adapter = TelegramAdapter(app_config.predlojka_bot)
+predlojka_telegram_adapter = telegram_adapter
+bank_telegram_adapter = TelegramAdapter(app_config.bank_bot)
+rpg_telegram_adapter = TelegramAdapter(app_config.rpg_bot)
 vk_adapter = None
 
 post_adapters = {Platform.TELEGRAM: telegram_adapter}
