@@ -2,7 +2,7 @@
 
 ## Требования
 
-- Python `3.10+`
+- Python `3.12+`
 - Telegram bot tokens для нужных ботов
 - ключи Yandex Cloud, если используется `#ai`
 
