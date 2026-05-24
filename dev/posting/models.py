@@ -54,6 +54,8 @@ class Post:
     author: PostAuthor
     origin: PostOrigin
     text: str = ""
+    formatted_text: str | None = None
+    text_parse_mode: str | None = None
     public_tags: list[str] = field(default_factory=list)
     is_anonymous: bool = False
     is_question: bool = False

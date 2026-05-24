@@ -45,7 +45,7 @@ EVENT_LIBRARY_PATH = VARIBLES_DIR / "events_library.txt"
 REPORT_LIBRARY_PATH = VARIBLES_DIR / "reports_library.txt"
 BLOCKED_SUBMISSION_CHATS = {channel, channel_red, chat_mishas_den}
 ADVICE_MESSAGES = [
-    "Совет вы можете написать в посте тег <code>#anon</code> или <code>#анон</code> - бот не будет указывать ваше имя в публикации.",
+    "Совет: вы можете написать в посте тег <code>#anon</code> или <code>#анон</code> - бот не будет указывать ваше имя в публикации.",
     "Подсказка: идеи для активностей можно отправлять тегом <code>#event</code> вместо обычной предложки.",
     "Подсказка: баги, опечатки и прочие технические замечания удобнее присылать через <code>#report</code>.",
     "Совет: <code>#message</code> и <code>#dm</code> отправляют сообщение админу с возможностью ответить вам в личку.",
@@ -80,6 +80,8 @@ def _serialize_post(post: Post) -> dict:
             "media_group_id": post.origin.media_group_id,
         },
         "text": post.text,
+        "formatted_text": post.formatted_text,
+        "text_parse_mode": post.text_parse_mode,
         "public_tags": list(post.public_tags),
         "is_anonymous": post.is_anonymous,
         "is_question": post.is_question,
@@ -107,6 +109,8 @@ def _deserialize_post(data: dict) -> Post:
             media_group_id=data["origin"].get("media_group_id"),
         ),
         text=data.get("text", ""),
+        formatted_text=data.get("formatted_text"),
+        text_parse_mode=data.get("text_parse_mode"),
         public_tags=list(data.get("public_tags") or []),
         is_anonymous=bool(data.get("is_anonymous")),
         is_question=bool(data.get("is_question")),
@@ -126,6 +130,8 @@ def _deserialize_post(data: dict) -> Post:
 def _build_platform_post_from_message(message, content: SubmissionContent) -> Post:
     post = telegram_adapter.create_post_from_message(message)
     post.text = content.clean_text
+    if post.formatted_text:
+        post.formatted_text = telegram_adapter._strip_submission_tags_from_formatted_text(post.formatted_text)
     post.public_tags = list(content.public_tags)
     post.is_anonymous = content.is_anonymous
     post.is_question = content.is_question
@@ -136,6 +142,8 @@ def _build_platform_post_from_message(message, content: SubmissionContent) -> Po
 def _build_platform_post_from_album(items: list, content: SubmissionContent) -> Post:
     post = telegram_adapter.create_post_from_media_group(items)
     post.text = content.clean_text
+    if post.formatted_text:
+        post.formatted_text = telegram_adapter._strip_submission_tags_from_formatted_text(post.formatted_text)
     post.public_tags = list(content.public_tags)
     post.is_anonymous = content.is_anonymous
     post.is_question = content.is_question
@@ -520,8 +528,10 @@ def _log_submission(message, content: SubmissionContent, *, event_type: str, con
 
 def _send_admin_preview(message, content: SubmissionContent, publish_text: str) -> None:
     markup = _build_moderation_markup(is_question=content.is_question)
-    preview_caption = publish_text or _compose_publish_text(content, _display_name(message.from_user))
     platform_post = _build_platform_post_from_message(message, content)
+    preview_caption = publish_text or _compose_publish_text(content, _display_name(message.from_user))
+    preview_formatted_text = PostFormatter.compose_publish_html(platform_post) if platform_post.text_parse_mode == "HTML" else preview_caption
+    preview_parse_mode = "HTML" if platform_post.text_parse_mode == "HTML" else None
     payload = {
         "content_type": message.content_type,
         "publish_text": publish_text,
@@ -540,29 +550,30 @@ def _send_admin_preview(message, content: SubmissionContent, publish_text: str) 
     if message.content_type == "text":
         admin_message = predlojka_telegram_adapter.send_message(
             admin,
-            f"{_preview_title(content, message.content_type)}\n\n{preview_caption}",
+            f"{_preview_title(content, message.content_type)}\n\n{preview_formatted_text}",
             reply_markup=markup,
+            parse_mode=preview_parse_mode,
         )
     elif message.content_type == "sticker":
         payload["file_id"] = message.sticker.file_id
         admin_message = predlojka_telegram_adapter.send_sticker(admin, message.sticker.file_id, reply_markup=markup)
-        helper = predlojka_telegram_adapter.send_message(admin, preview_caption, reply_to_message_id=admin_message.message_id)
+        helper = predlojka_telegram_adapter.send_message(admin, preview_formatted_text, reply_to_message_id=admin_message.message_id, parse_mode=preview_parse_mode)
         payload["helper_message_id"] = helper.message_id
     elif message.content_type == "photo":
         payload["file_id"] = message.photo[-1].file_id
-        admin_message = predlojka_telegram_adapter.send_photo(admin, message.photo[-1].file_id, caption=preview_caption, reply_markup=markup)
+        admin_message = predlojka_telegram_adapter.send_photo(admin, message.photo[-1].file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     elif message.content_type == "video":
         payload["file_id"] = message.video.file_id
-        admin_message = predlojka_telegram_adapter.send_video(admin, message.video.file_id, caption=preview_caption, reply_markup=markup)
+        admin_message = predlojka_telegram_adapter.send_video(admin, message.video.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     elif message.content_type == "document":
         payload["file_id"] = message.document.file_id
-        admin_message = predlojka_telegram_adapter.send_document(admin, message.document.file_id, caption=preview_caption, reply_markup=markup)
+        admin_message = predlojka_telegram_adapter.send_document(admin, message.document.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     elif message.content_type == "audio":
         payload["file_id"] = message.audio.file_id
-        admin_message = predlojka_telegram_adapter.send_audio(admin, message.audio.file_id, caption=preview_caption, reply_markup=markup)
+        admin_message = predlojka_telegram_adapter.send_audio(admin, message.audio.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     elif message.content_type == "voice":
         payload["file_id"] = message.voice.file_id
-        admin_message = predlojka_telegram_adapter.send_voice(admin, message.voice.file_id, caption=preview_caption, reply_markup=markup)
+        admin_message = predlojka_telegram_adapter.send_voice(admin, message.voice.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     else:
         raise ValueError(f"Неподдерживаемый тип контента: {message.content_type}")
 
@@ -1501,6 +1512,16 @@ def publish_due_scheduled_posts() -> None:
                 )
             except Exception as error:
                 logger.error(f"Не удалось опубликовать отложенную запись {record['doc_id']}: {error}")
+                try:
+                    predlojka_telegram_adapter.send_message(
+                        admin,
+                        "Не удалось опубликовать отложенную запись.\n"
+                        f"ID задачи: {record['doc_id']}\n"
+                        f"Тип: {record['content_type']}\n"
+                        f"Ошибка: {error}",
+                    )
+                except Exception as notify_error:
+                    logger.error(f"Не удалось отправить уведомление админу о сбое отложенной записи {record['doc_id']}: {notify_error}")
     finally:
         scheduled_publish_lock.release()
 

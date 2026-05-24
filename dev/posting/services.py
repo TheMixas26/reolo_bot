@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
 
@@ -42,6 +43,8 @@ class ParsedSubmission:
 
 
 class PostParser:
+    TAG_PATTERN = TAG_PATTERN
+
     @staticmethod
     def _normalize_submission_text(text: str) -> str:
         normalized = re.sub(r"[ \t]+", " ", text)
@@ -183,6 +186,20 @@ class PostFormatter:
             parts.append("🏷️ " + " ".join(post.public_tags))
         if post.append_author_signature:
             parts.append("🤫 Аноним" if post.is_anonymous else f"👤 {post.author.display_name}")
+        return "\n\n".join(parts).strip()
+
+    @staticmethod
+    def compose_publish_html(post: Post) -> str:
+        parts: list[str] = []
+        if post.formatted_text:
+            parts.append(post.formatted_text)
+        elif post.text:
+            parts.append(html.escape(post.text))
+        if post.public_tags:
+            parts.append(html.escape("🏷️ " + " ".join(post.public_tags)))
+        if post.append_author_signature:
+            signature = "🤫 Аноним" if post.is_anonymous else f"👤 {post.author.display_name}"
+            parts.append(html.escape(signature))
         return "\n\n".join(parts).strip()
 
     @staticmethod

@@ -232,6 +232,8 @@ class VKAdapter(SocialAdapter):
         params = {}
         if owner_id < 0:
             params["group_id"] = abs(owner_id)
+        if attachment.media_type == MediaType.VOICE:
+            params["type"] = "audio_message"
         upload_info = self._call_api("docs.getWallUploadServer", **params)
         upload_result = self._upload_bytes(upload_info["upload_url"], "file", content=content, file_name=file_name, mime_type=mime_type)
         saved = self._call_api("docs.save", file=upload_result["file"], title=file_name)
@@ -243,6 +245,19 @@ class VKAdapter(SocialAdapter):
 
         return self._build_vk_attachment_id("doc", int(document["owner_id"]), int(document["id"]))
 
+    def _upload_video_to_vk(self, attachment: MediaAttachment, *, owner_id: int) -> str:
+        content, file_name, mime_type = self._download_attachment(attachment)
+        params = {
+            "name": Path(file_name).stem or file_name,
+            "wallpost": 0,
+        }
+        if owner_id < 0:
+            params["group_id"] = abs(owner_id)
+        upload_info = self._call_api("video.save", **params)
+        self._upload_bytes(upload_info["upload_url"], "video_file", content=content, file_name=file_name, mime_type=mime_type)
+        video_id = upload_info.get("video_id", upload_info.get("id"))
+        return self._build_vk_attachment_id("video", int(upload_info["owner_id"]), int(video_id))
+
     def _ensure_vk_reference(self, attachment: MediaAttachment, *, owner_id: int) -> str | None:
         existing = attachment.get_reference(Platform.VK)
         if existing:
@@ -253,6 +268,8 @@ class VKAdapter(SocialAdapter):
 
         if attachment.media_type == MediaType.PHOTO:
             uploaded = self._upload_photo_to_vk(attachment, owner_id=owner_id)
+        elif attachment.media_type == MediaType.VIDEO:
+            uploaded = self._upload_video_to_vk(attachment, owner_id=owner_id)
         else:
             uploaded = self._upload_doc_to_vk(attachment, owner_id=owner_id)
 

@@ -7,6 +7,8 @@ from database.scheduled_posts_db import list_scheduled_posts
 from database.sqlite_db import get_all_users
 from analytics.stats import log_command_usage, log_event
 from posting.runtime import predlojka_telegram_adapter
+import subprocess
+from utils.weather import send_weather
 
 
 def _preview_scheduled_payload(payload: dict, content_type: str) -> str:
@@ -160,9 +162,19 @@ def stop_bot(message):
         return
     log_command_usage("predlojka", "stop_bot", message)
     predlojka_telegram_adapter.reply_to(message, "Самоликвидируюсь по приказу командования!!!!!")
-    # TODO: пусть скидывает каритнку "при эвакуации выстрелить в серверную"
+    with open('doc/shoot-at-the-server-room-during-the-evacuation.png', 'rb') as photo:
+        predlojka_telegram_adapter.send_photo(message.chat.id, photo)
     SystemExit("Бот остановлен администратором")
 
+
+@predlojka_bot.message_handler(commands=['update_bot'])
+def update_bot(message):
+    if message.from_user.id != admin:
+        return
+    log_command_usage("predlojka", "update_bot", message)
+    predlojka_telegram_adapter.reply_to(message, "Обновляюсь! Вернусь через пару секунд... (⌒_⌒ )")
+    subprocess.run(['git', 'pull'])
+    SystemExit("Бот перезапущен администратором")
 
 
 @predlojka_bot.message_handler(commands=['broadcast'])
@@ -201,3 +213,12 @@ def send_actual_db(message):
     backupDB()
     log_event("backup_requested", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
     predlojka_telegram_adapter.reply_to(message, "Резервная копия базы данных и файлов аналитики отправлена! Люблю свою работу!)) (^-^)")
+
+
+@predlojka_bot.message_handler(commands=['send_weather'])
+def command_to_send_weather(message):
+    if message.from_user.id != admin:
+        return
+    log_command_usage("predlojka", "send_weather", message)
+    send_weather()
+    predlojka_telegram_adapter.reply_to(message, "Принудительно высылаю погоду!!! Дождик-дождик, не дожди... ( •̀ᴗ•́ )و ̑̑")

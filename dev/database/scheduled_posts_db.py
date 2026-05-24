@@ -6,7 +6,7 @@ from threading import Lock
 
 from tinydb import Query, TinyDB
 
-DB_PATH = Path("dev/database/posts.json")
+DB_PATH = Path(__file__).resolve().parent / "posts.json"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 _db = TinyDB(DB_PATH, ensure_ascii=False, indent=2)

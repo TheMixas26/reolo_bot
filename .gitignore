@@ -10,3 +10,4 @@ handlers/__pycache__
 *.sqlite3
 *.jsonl
 dev/database/scheduled_posts.json
+dev/analytics/bot_stats_summary.txt
