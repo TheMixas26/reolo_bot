@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from telebot.formatting import apply_html_entities
 from telebot import types
 
 from posting.adapters.base import SocialAdapter
 from posting.models import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin, PostTarget, PublishResult
-from posting.services import PostFactory
+from posting.services import PostFactory, PostFormatter, PostParser
 
 
 class TelegramAdapter(SocialAdapter):
@@ -12,6 +13,69 @@ class TelegramAdapter(SocialAdapter):
 
     def __init__(self, bot) -> None:
         self.bot = bot
+
+    @staticmethod
+    def _strip_submission_tags_from_formatted_text(formatted_text: str) -> str:
+        if not formatted_text:
+            return ""
+        parts: list[str] = []
+        last_index = 0
+        previous_tag_end: int | None = None
+        for match in PostParser.TAG_PATTERN.finditer(formatted_text):
+            start, end = match.span()
+            previous_char = formatted_text[start - 1] if start > 0 else ""
+            starts_new_tag = (
+                start == 0
+                or not (previous_char.isalnum() or previous_char == "_")
+                or previous_tag_end == start
+            )
+            if not starts_new_tag:
+                previous_tag_end = None
+                continue
+            parts.append(formatted_text[last_index:start])
+            last_index = end
+            previous_tag_end = end
+        parts.append(formatted_text[last_index:])
+        return PostParser._normalize_submission_text("".join(parts))
+
+    @classmethod
+    def _build_formatted_text(cls, text: str | None, entities: list | None) -> tuple[str | None, str | None]:
+        if not text:
+            return None, None
+        formatted = apply_html_entities(text, entities, None)
+        cleaned = cls._strip_submission_tags_from_formatted_text(formatted)
+        if not cleaned:
+            return None, None
+        return cleaned, "HTML"
+
+    @staticmethod
+    def _resolve_text_payload(message) -> tuple[str | None, list | None]:
+        content_type = getattr(message, "content_type", "text")
+        if content_type == "text":
+            return message.text, getattr(message, "entities", None)
+        return message.caption, getattr(message, "caption_entities", None)
+
+    @staticmethod
+    def _resolve_album_text_payload(messages: list) -> tuple[str | None, list | None]:
+        formatted_chunks: list[str] = []
+        for message in messages:
+            caption = getattr(message, "caption", None)
+            if not caption:
+                continue
+            formatted_chunks.append(
+                apply_html_entities(caption, getattr(message, "caption_entities", None), None)
+            )
+        if not formatted_chunks:
+            return None, None
+        return "\n".join(formatted_chunks), []
+
+    @staticmethod
+    def _resolve_rendered_text(post: Post, rendered_text: str, parse_mode: str | None) -> tuple[str, str | None]:
+        if parse_mode is not None:
+            return rendered_text, parse_mode
+        if post.text_parse_mode == "HTML":
+            return PostFormatter.compose_publish_html(post), "HTML"
+        return rendered_text, None
 
     @staticmethod
     def build_display_name(user) -> str:
@@ -53,7 +117,8 @@ class TelegramAdapter(SocialAdapter):
         elif content_type == "voice":
             attachments.append(MediaAttachment(media_type=MediaType.VOICE, references={Platform.TELEGRAM: message.voice.file_id}))
 
-        raw_text = message.text if content_type == "text" else message.caption
+        raw_text, entities = self._resolve_text_payload(message)
+        formatted_text, text_parse_mode = self._build_formatted_text(raw_text, entities)
         author = PostAuthor(
             user_id=message.from_user.id,
             display_name=self.build_display_name(message.from_user),
@@ -66,13 +131,16 @@ class TelegramAdapter(SocialAdapter):
             message_id=message.message_id,
             media_group_id=getattr(message, "media_group_id", None),
         )
-        return PostFactory.create_submission_post(
+        post = PostFactory.create_submission_post(
             author=author,
             origin=origin,
             raw_text=raw_text,
             attachments=attachments,
             append_author_signature=append_author_signature,
         )
+        post.formatted_text = formatted_text
+        post.text_parse_mode = text_parse_mode
+        return post
 
     def create_post_from_media_group(self, messages: list) -> Post:
         if not messages:
@@ -87,6 +155,9 @@ class TelegramAdapter(SocialAdapter):
 
         first_message = messages[0]
         raw_text = "\n".join(item.caption for item in messages if item.caption)
+        formatted_source, _ = self._resolve_album_text_payload(messages)
+        formatted_text = self._strip_submission_tags_from_formatted_text(formatted_source) if formatted_source else None
+        text_parse_mode = "HTML" if formatted_text else None
         author = PostAuthor(
             user_id=first_message.from_user.id,
             display_name=self.build_display_name(first_message.from_user),
@@ -99,7 +170,10 @@ class TelegramAdapter(SocialAdapter):
             message_id=first_message.message_id,
             media_group_id=str(first_message.media_group_id),
         )
-        return PostFactory.create_submission_post(author=author, origin=origin, raw_text=raw_text, attachments=attachments)
+        post = PostFactory.create_submission_post(author=author, origin=origin, raw_text=raw_text, attachments=attachments)
+        post.formatted_text = formatted_text
+        post.text_parse_mode = text_parse_mode
+        return post
 
     def send_text(self, chat_id: int | str, text: str, **kwargs):
         return self.bot.send_message(chat_id, text, **kwargs)
@@ -156,7 +230,7 @@ class TelegramAdapter(SocialAdapter):
             return vk_ref
         return None
 
-    def _build_album_media(self, post: Post, rendered_text: str) -> list:
+    def _build_album_media(self, post: Post, rendered_text: str, parse_mode: str | None = None) -> list:
         media = []
         for index, attachment in enumerate(post.attachments):
             file_id = self._resolve_telegram_reference(attachment)
@@ -164,9 +238,9 @@ class TelegramAdapter(SocialAdapter):
                 continue
             caption = rendered_text if index == 0 else None
             if attachment.media_type == MediaType.PHOTO:
-                media.append(types.InputMediaPhoto(file_id, caption=caption))
+                media.append(types.InputMediaPhoto(file_id, caption=caption, parse_mode=parse_mode))
             elif attachment.media_type == MediaType.VIDEO:
-                media.append(types.InputMediaVideo(file_id, caption=caption))
+                media.append(types.InputMediaVideo(file_id, caption=caption, parse_mode=parse_mode))
         return media
 
     def publish_post(
@@ -179,15 +253,16 @@ class TelegramAdapter(SocialAdapter):
         parse_mode: str | None = None,
     ) -> PublishResult:
         message_ids: list[int | str] = []
+        effective_text, effective_parse_mode = self._resolve_rendered_text(post, rendered_text, parse_mode)
 
         if post.is_album:
-            media = self._build_album_media(post, rendered_text)
+            media = self._build_album_media(post, effective_text, effective_parse_mode)
             if not media:
                 response = self.bot.send_message(
                     target.destination_id,
-                    rendered_text,
+                    effective_text,
                     disable_notification=disable_notification,
-                    parse_mode=parse_mode,
+                    parse_mode=effective_parse_mode,
                 )
                 return PublishResult(platform=self.platform, target_id=target.destination_id, message_ids=[response.message_id], raw_response=response)
             response = self.bot.send_media_group(target.destination_id, media)
@@ -197,9 +272,9 @@ class TelegramAdapter(SocialAdapter):
         if not post.attachments:
             response = self.bot.send_message(
                 target.destination_id,
-                rendered_text,
+                effective_text,
                 disable_notification=disable_notification,
-                parse_mode=parse_mode,
+                parse_mode=effective_parse_mode,
             )
             return PublishResult(platform=self.platform, target_id=target.destination_id, message_ids=[response.message_id], raw_response=response)
 
@@ -208,21 +283,21 @@ class TelegramAdapter(SocialAdapter):
         if not file_id:
             response = self.bot.send_message(
                 target.destination_id,
-                rendered_text,
+                effective_text,
                 disable_notification=disable_notification,
-                parse_mode=parse_mode,
+                parse_mode=effective_parse_mode,
             )
             return PublishResult(platform=self.platform, target_id=target.destination_id, message_ids=[response.message_id], raw_response=response)
 
         if attachment.media_type == MediaType.STICKER:
             sticker_message = self.bot.send_sticker(target.destination_id, file_id, disable_notification=disable_notification)
             message_ids.append(sticker_message.message_id)
-            if rendered_text:
+            if effective_text:
                 text_message = self.bot.send_message(
                     target.destination_id,
-                    rendered_text,
+                    effective_text,
                     disable_notification=disable_notification,
-                    parse_mode=parse_mode,
+                    parse_mode=effective_parse_mode,
                 )
                 message_ids.append(text_message.message_id)
                 return PublishResult(platform=self.platform, target_id=target.destination_id, message_ids=message_ids, raw_response=[sticker_message, text_message])
@@ -242,8 +317,8 @@ class TelegramAdapter(SocialAdapter):
         response = sender(
             target.destination_id,
             file_id,
-            caption=rendered_text or None,
+            caption=effective_text or None,
             disable_notification=disable_notification,
-            parse_mode=parse_mode,
+            parse_mode=effective_parse_mode,
         )
         return PublishResult(platform=self.platform, target_id=target.destination_id, message_ids=[response.message_id], raw_response=response)
