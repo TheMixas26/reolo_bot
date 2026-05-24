@@ -131,4 +131,4 @@ def check_imperial_events():
     else:
         message = f"Сегодня {today_info['day']} {today_info['month']} {today_info['year']} по Имперскому календарю. Сегодня нет праздников."
     
-    predlojka_bot.send_message(channel, message)
+    predlojka_bot.send_message(chat_mishas_den, message)
