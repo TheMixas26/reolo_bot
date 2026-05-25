@@ -1,6 +1,6 @@
 import json, random
 
-with open("varibles/texts.json", encoding="utf-8") as f:
+with open("dev/varibles/texts.json", encoding="utf-8") as f:
     DIALOGS = json.load(f)
 
 def TEXT(*keys, **kwargs):
