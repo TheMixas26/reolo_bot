@@ -7,10 +7,11 @@ import time
 
 from ai.ai_module import stream_ai
 from analytics.stats import log_event
-from handlers.predlojka_handlers import HIBERNATION_MESSAGE, submit_external_post
+from handlers.predlojka_handlers import submit_external_post
 from posting.runtime import vk_adapter
 from posting.services import PostParser
 from utils.utils import thx_for_message
+from varibles.dialogue_loader import TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ def run_vk_listener() -> None:
                 parsed = PostParser.parse_submission_text(message.get("text") or "")
                 author_name = vk_adapter.build_display_name(from_id)
                 if _is_hibernation_enabled():
-                    vk_adapter.send_message(peer_id, HIBERNATION_MESSAGE)
+                    vk_adapter.send_message(peer_id, TEXT("hibernation_message"))
                     continue
                 if parsed.ignore_reaction:
                     continue
