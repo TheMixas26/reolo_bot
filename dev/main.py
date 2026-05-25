@@ -14,7 +14,7 @@ import utils.schedulers # Импортируем планировщик, что�
 try:
     from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
 except Exception as e:
-    print("[CORE] - не получилось импортировать настройки. Файл config.py существует?")
+    print(f"[CORE] - не получилось импортировать настройки. Файл config.py существует? {e}")
     exit(1)
 
 # Настройка логирования
