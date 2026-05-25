@@ -12,7 +12,7 @@ from threading import Thread
 import time
 import utils.schedulers # Импортируем планировщик, чтобы он запустился
 try:
-    from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE
+    from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
 except Exception as e:
     print("[CORE] - не получилось импортировать настройки. Файл config.py существует?")
     exit(1)

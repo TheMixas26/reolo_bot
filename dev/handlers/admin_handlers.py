@@ -8,7 +8,9 @@ from database.sqlite_db import get_all_users
 from analytics.stats import log_command_usage, log_event
 from posting.runtime import predlojka_telegram_adapter
 import subprocess
+from random import choice
 from utils.weather import send_weather
+from varibles.dialogue_loader import TEXT
 
 
 def _preview_scheduled_payload(payload: dict, content_type: str) -> str:
@@ -57,10 +59,10 @@ def show_scheduled_posts(message):
 def editing_currency(message):
     log_command_usage("predlojka", "edit_currency", message)
     if message.chat.id == admin:
-        predlojka_telegram_adapter.reply_to(message, "Агась! Жду циферки, баты и рубли через запятую.")
+        predlojka_telegram_adapter.reply_to(message, TEXT("answer_for_edit_currency"))
         predlojka_bot.register_next_step_handler(message, editing_currency2)
     else:
-        predlojka_telegram_adapter.reply_to(message, "Вы не администратор! Ну-ка перестаньте пытаться сломать экономику!!! (◣_◢)")
+        predlojka_telegram_adapter.reply_to(message, TEXT("not_an_admin"))
 
 def editing_currency2(message):
     try:
@@ -96,7 +98,7 @@ def set_commands(message=None):
     log_event("commands_synced", bot="system", metadata={"triggered_by": message.from_user.id if message else "scheduler"})
 
     if message:
-        predlojka_telegram_adapter.reply_to(message, "Команды обновлены! (⌒_⌒ )")
+        predlojka_telegram_adapter.reply_to(message, TEXT('setcmd_successfully'))
 
 
 
@@ -134,14 +136,14 @@ def handle_fake_post(message):
                 predlojka_telegram_adapter.copy_message(channel, message.chat.id, message.reply_to_message.message_id, caption=caption)
             else:
                 predlojka_telegram_adapter.copy_message(channel, message.chat.id, message.reply_to_message.message_id)
-            predlojka_telegram_adapter.reply_to(message, "Готово! Переслала отвеченное сообщение в канал)")
+            predlojka_telegram_adapter.reply_to(message, TEXT("fakepost_successfully"))
             log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "reply_copy"})
             return
         except Exception as e:
-            predlojka_telegram_adapter.reply_to(message, f"(╥﹏╥) Не получилось переслать сообщение: {e}")
+            predlojka_telegram_adapter.reply_to(message, f"{TEXT("err", "message_forward")}{e}")
             return
 
-    predlojka_telegram_adapter.reply_to(message, r"Отлично! Злодействуем значит))) (⌐■‿■)\n\nНапиши пост \(подпись от человека висит на вас\)\n\nНа всякий напоминаю, `👤 {имя}`", parse_mode="MarkdownV2")
+    predlojka_telegram_adapter.reply_to(message, TEXT("fakepost_start"), parse_mode="MarkdownV2")
     predlojka_bot.register_next_step_handler(message, handle_fake_post2)
 
 def handle_fake_post2(message):
@@ -149,7 +151,7 @@ def handle_fake_post2(message):
         return
     try:
         predlojka_telegram_adapter.send_message(channel, message.text)
-        predlojka_telegram_adapter.send_message(message.chat.id, "Готово! Пост улетел. Удачи с махинациями))) (¬‿¬)")
+        predlojka_telegram_adapter.send_message(message.chat.id, TEXT("fakepost_done"))
         log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "text"})
     except Exception as e:
         predlojka_telegram_adapter.send_message(message.chat.id, f"(╥﹏╥) Ошибка при отправке поста: {e}")
@@ -161,7 +163,7 @@ def stop_bot(message):
     if message.from_user.id != admin:
         return
     log_command_usage("predlojka", "stop_bot", message)
-    predlojka_telegram_adapter.reply_to(message, "Самоликвидируюсь по приказу командования!!!!!")
+    predlojka_telegram_adapter.reply_to(message, TEXT("stop_bot"))
     with open('doc/shoot-at-the-server-room-during-the-evacuation.png', 'rb') as photo:
         predlojka_telegram_adapter.send_photo(message.chat.id, photo)
     SystemExit("Бот остановлен администратором")
@@ -172,7 +174,7 @@ def update_bot(message):
     if message.from_user.id != admin:
         return
     log_command_usage("predlojka", "update_bot", message)
-    predlojka_telegram_adapter.reply_to(message, "Обновляюсь! Вернусь через пару секунд... (⌒_⌒ )")
+    predlojka_telegram_adapter.reply_to(message, TEXT('update_bot'))
     subprocess.run(['git', 'pull'])
     SystemExit("Бот перезапущен администратором")
 
@@ -182,7 +184,7 @@ def public_notify_command(message):
     if message.from_user.id != admin:
         return
     log_command_usage("predlojka", "broadcast", message)
-    predlojka_telegram_adapter.reply_to(message, "Ого! (ノ°ο°)ノ\nУ нас тут рассылка намечается! Напишите сообщение, которое хотите разослать всем пользователям. А остальное оставьте на меня)) (⌐■ω■)")
+    predlojka_telegram_adapter.reply_to(message, TEXT("broadcast_start"))
     predlojka_bot.register_next_step_handler(message, handle_public_notify)
 
 
@@ -199,7 +201,7 @@ def handle_public_notify(message):
             except Exception as e:
                 print(f"Ошибка при отправке сообщения пользователю {user['user_id']}: {e}")
         log_event("broadcast_completed", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"sent_count": sent_count})
-        predlojka_telegram_adapter.reply_to(message, "Рассылка завершена! Надеюсь там не было опечаток... (◠‿◠;;)")
+        predlojka_telegram_adapter.reply_to(message, TEXT("broadcast_done"))
     except Exception as e:
         predlojka_telegram_adapter.reply_to(message, f"(╥﹏╥) Ошибка при рассылке: {e}")
 
@@ -212,7 +214,7 @@ def send_actual_db(message):
     log_command_usage("predlojka", "send_actual_db", message)
     backupDB()
     log_event("backup_requested", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
-    predlojka_telegram_adapter.reply_to(message, "Резервная копия базы данных и файлов аналитики отправлена! Люблю свою работу!)) (^-^)")
+    predlojka_telegram_adapter.reply_to(message, TEXT('backup_successfully_send'))
 
 
 @predlojka_bot.message_handler(commands=['send_weather'])
@@ -221,4 +223,4 @@ def command_to_send_weather(message):
         return
     log_command_usage("predlojka", "send_weather", message)
     send_weather()
-    predlojka_telegram_adapter.reply_to(message, "Принудительно высылаю погоду!!! Дождик-дождик, не дожди... ( •̀ᴗ•́ )و ̑̑")
+    predlojka_telegram_adapter.reply_to(message, TEXT("forced_weather"))
