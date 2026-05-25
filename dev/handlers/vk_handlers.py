@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import config as app_config
 import logging
 import time
 
 from ai.ai_module import stream_ai
 from analytics.stats import log_event
-from handlers.predlojka_handlers import submit_external_post
+from handlers.predlojka_handlers import HIBERNATION_MESSAGE, submit_external_post
 from posting.runtime import vk_adapter
 from posting.services import PostParser
 from utils.utils import thx_for_message
 
 logger = logging.getLogger(__name__)
+
+
+def _is_hibernation_enabled() -> bool:
+    return bool(getattr(app_config, "HIBERNATION", False))
 
 
 def _acknowledge_vk_submission(peer_id: int, author_name: str, *, is_question: bool) -> None:
@@ -84,6 +89,9 @@ def run_vk_listener() -> None:
 
                 parsed = PostParser.parse_submission_text(message.get("text") or "")
                 author_name = vk_adapter.build_display_name(from_id)
+                if _is_hibernation_enabled():
+                    vk_adapter.send_message(peer_id, HIBERNATION_MESSAGE)
+                    continue
                 if parsed.ignore_reaction:
                     continue
                 if parsed.route != "post":

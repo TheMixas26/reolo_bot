@@ -4,6 +4,7 @@ from utils.birthdays import add_birthday, add_birthday_by_username
 from analytics.stats import log_command_usage, log_event
 from posting.runtime import predlojka_telegram_adapter
 from settings import MAIN_BOT_NAME, PROJECT_NAME, RPG_BOT_NAME, RPG_BOT_USERNAME, render_text_template
+from varibles.dialogue_loader import TEXT
 
 @predlojka_bot.message_handler(commands=['start'])
 def start(message):
@@ -41,14 +42,14 @@ def changelog(message):
             predlojka_telegram_adapter.send_document(
                 message.chat.id, f,
                 reply_to_message_id=message.message_id,
-                caption=f"Вот моя история обновлений! Текущая версия: <b>{bot_version}</b>",
+                caption=TEXT("changelog_command", bot_version=bot_version),
                 parse_mode='HTML'
             )
     except Exception as e:
         print(e)
         predlojka_telegram_adapter.reply_to(
             message,
-            text="Не удалось загрузить Информацию о последнем обновлении. (X_X)\nТеперь меня снова закроют в подвале и больше никогда не запустят... (≧ ﹏ ≦)"
+            text=TEXT("err", "changelog_command")
         )
 
 
@@ -67,7 +68,7 @@ def help(message):
         print(e)
         predlojka_telegram_adapter.reply_to(
             message,
-            text="Не удалось загрузить справку. (X_X)\nТеперь меня снова закроют в подвале и больше никогда не запустят (≧ ﹏ ≦)"
+            text=TEXT("err", "help_command")
         )
 
 
@@ -77,6 +78,7 @@ def redirect_to_rpg_bot(message):
     log_command_usage("predlojka", "battle", message)
     predlojka_telegram_adapter.reply_to(
         message,
+        # TODO: перенести в texts.json
         f"Притормози, дружище! Вся RPG система переехала в {RPG_BOT_NAME}. "
         f"Не волнуйся, формально это всё ещё я, просто вынесенная часть проекта. "
         f"Бегом в него!\n\n{RPG_BOT_USERNAME}"

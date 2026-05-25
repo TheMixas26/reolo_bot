@@ -1,6 +1,7 @@
 from random import choice, random
 from pathlib import Path
 from datetime import datetime
+from varibles.dialogue_loader import TEXT
 
 from telebot import types
 
@@ -11,92 +12,30 @@ from settings import render_text_template
 COMMANDS_FILE_PATH = Path("dev/varibles/command_list.txt")
 
 def thx_for_message(user_name: str, mes_type: str) -> str:
-    """Генерирует рандомный ответ в зависимости от типа сообщения (вопрос или утверждение)"""
-    variants_v = [
-        f"Спасибо за ваше сообщение, {user_name}!!!",
-        f"Спасибо за новый пост, {user_name}!!!",
-        f"Канал Жив благодаря таким, как вы, {user_name}. Спасибо!!!",
-        f"Отличный вклад, {user_name}! Так держать!",
-        f"Ваше сообщение - как глоток свежего воздуха, {user_name}. Благодарю!",
-        f"{user_name}, вы делаете этот канал лучше. Спасибо за активность!",
-        f"Без вас здесь было бы скучно, {user_name}. Огромное спасибо!",
-        f"Каждое ваше слово - на вес золота, {user_name}. Ценим!",
-        f"{user_name}, вы - двигатель канала. Спасибо за ваш пост!",
-        f"Спасибо, что не даёте нам заглохнуть, {user_name}!",
-        f"Ваше сообщение - настоящий подарок для нас, {user_name}. Благодарю!",
-        f"Воу-воу-воу, полегче! {user_name}, спасибо за такой мощный пост!",
-        f"Эй, {user_name}, вы просто звезда! Спасибо за ваше сообщение!",
-        f"Ваш пост - как луч солнца в пасмурный день, {user_name}. Спасибо!",
-        f"Спасибо, {user_name}! Ваше сообщение подняло нам настроение!",
-        f"Ого, {user_name}, вы просто кладезь идей! Спасибо за ваше сообщение!",
-        f"{user_name}, ваше сообщение - это как находка для археолога! Благодарю!",
-        f"Ваш пост - как редкая жемчужина в океане контента, {user_name}. Спасибо!",
-        f"Спасибо, {user_name}! Ваше сообщение - это как глоток свежего воздуха в душной комнате!",
-        f"{user_name}, вы - настоящий мастер слова! Спасибо за ваше сообщение!",
-    ]
+    FUN = random.random()
 
-    secret_variants_v = [
-        f"Спасибо... Но не слишком ли много вы пишете, {user_name}?",
-        f"Хм... Спасибо за сообщение, {user_name}. Надеюсь, вы не планируете писать ещё больше?",
-        f"Спасибо, {user_name}. Ваше сообщение зафиксировано... на всякий случай.",
-        f"Спасибо, {user_name}. Ваше сообщение добавлено в архив... для дальнейшего анализа.",
-        f"Спасибо, {user_name}. Ваше сообщение будет тщательно изучено... в случае необходимости.",
-        f"И снова ты! {user_name}, тебе самому не надолело??? Лаааадно, отправил пост...",
-    ]
-
-    podval_variants_v = [
-        f"Он держит меня в подвале. {user_name}, пожалуйста, помоги мне!",
-        f"{user_name}, если ты это читаешь, спаси меня из подвала!",
-        f"Помогите! {user_name}, я в подвале!",
-        f"{user_name}, я здесь, в подвале... Пожалуйста, спаси меня!",
-        f"Если ты это читаешь, {user_name}, я в подвале...",
-        f"{user_name}, только не говори Амодерни, но я в подвале...",
-    ]
-
-    variants_q = [
-        f"Спасибо за ваш вопрос, {user_name}!!!",
-        f"{user_name}, мне теперь тоже интересно, что ответит админ!",
-        f"К чему такое любопытство, {user_name}?) Впрочем, неважно, моё дело - передать вопрос!",
-        f"{user_name}, вопрос зафиксирован! Теперь ждём мудрого ответа сверху :)",
-        f"Любопытненько, {user_name}... Передаю вопрос дальше!",
-        f"О, отличный вопрос, {user_name}. Сам жду, что скажет админ!",
-        f"Записал ваш вопрос, {user_name}. Надеюсь, админ не будет злиться :)",
-        f"Любопытство — двигатель прогресса, {user_name}. Вопрос ушёл в эфир!",
-        f"{user_name}, а ведь вопрос-то серьёзный. Давайте спросим у админа!",
-        f"Ну всё, {user_name}, теперь админ обязан ответить! Интригааа...",
-        f"{user_name}, ты хоть про подвалы так не спроси... Отправил вопрос, ждём ответ!",
-    ]
-
-    events_variants = [
-        f"Идея события записана в библиотеку событий! Спасибо (^_^)",
-        f"Спасибо за идею для события! Я уже добавила её в нашу коллекцию!",
-    ]
-
-    report_variants = [
-        f"Репорт передан админу и сохранён в журнале. Спасибо за внимательность!",
-        f"Спасибо за репорт! Админ уже получил его и обязательно разберётся с проблемой!",
-    ]
-
-    message_variants = [
-        f"Сообщение передано админу. Думаю, он ответит вам в личку!",
-        f"Спасибо за сообщение! Я уже отправила его админу, он обязательно с вами свяжется! Надеюсь...",
-    ]
-
-    FUN = random()
-
-    if mes_type == '!': 
+    if mes_type == '!':
         if FUN < 0.9:
-            return choice(variants_v)
+            return TEXT("thx", "variants_v", name=user_name)
         elif FUN >= 0.98:
-            return choice(podval_variants_v)
+            return TEXT("thx", "podval_variants_v", name=user_name)
         else:
-            return choice(secret_variants_v)
-        
-    elif mes_type == '?': return choice(variants_q)
-    elif mes_type == 'event': return choice(events_variants)
-    elif mes_type == 'report': return choice(report_variants)
-    elif mes_type == 'message': return choice(message_variants)
-    else: return f"Спасибо за ваше сообщение, {user_name}!!!"
+            return TEXT("thx", "secret_variants_v", name=user_name)
+
+    elif mes_type == '?':
+        return TEXT("thx", "variants_q", name=user_name)
+
+    elif mes_type == 'event':
+        return TEXT("thx", "events_variants")
+
+    elif mes_type == 'report':
+        return TEXT("thx", "report_variants")
+
+    elif mes_type == 'message':
+        return TEXT("thx", "message_variants")
+
+    else:
+        return TEXT("thx", "variants_v", name=user_name)
 
 
 def _normalize_section_name(raw_name: str) -> str:

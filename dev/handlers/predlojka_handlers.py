@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import config as app_config
 import logging
 import threading
 import time
@@ -10,6 +11,7 @@ from pathlib import Path
 from random import choice, random
 
 from telebot import types
+from varibles.dialogue_loader import TEXT
 
 from ai.ai_module import stream_ai
 from analytics.stats import log_event
@@ -44,14 +46,6 @@ VARIBLES_DIR = BASE_DIR / "varibles"
 EVENT_LIBRARY_PATH = VARIBLES_DIR / "events_library.txt"
 REPORT_LIBRARY_PATH = VARIBLES_DIR / "reports_library.txt"
 BLOCKED_SUBMISSION_CHATS = {channel, channel_red, chat_mishas_den}
-ADVICE_MESSAGES = [
-    "Совет: вы можете написать в посте тег <code>#anon</code> или <code>#анон</code> - бот не будет указывать ваше имя в публикации.",
-    "Подсказка: идеи для активностей можно отправлять тегом <code>#event</code> вместо обычной предложки.",
-    "Подсказка: баги, опечатки и прочие технические замечания удобнее присылать через <code>#report</code>.",
-    "Совет: <code>#message</code> и <code>#dm</code> отправляют сообщение админу с возможностью ответить вам в личку.",
-    "Небольшой лайфхак: тег <code>#ignore</code> отправляет сообщение без ответной реакции бота.",
-    "Подсказка: обычные пользовательские теги публикуются как теги поста, а служебные вроде <code>#event</code> и <code>#report</code> меняют маршрут сообщения.",
-]
 
 
 @dataclass
@@ -188,6 +182,18 @@ def _can_use_ai(chat_id: int) -> bool:
     return chat_id == chat_mishas_den or chat_id not in BLOCKED_SUBMISSION_CHATS
 
 
+def is_hibernation_enabled() -> bool:
+    return bool(getattr(app_config, "HIBERNATION", False))
+
+
+def _send_hibernation_message(chat_id: int, *, reply_to_message_id: int | None = None) -> None:
+    predlojka_telegram_adapter.send_message(
+        chat_id,
+        TEXT("hibernation_message"),
+        reply_to_message_id=reply_to_message_id,
+    )
+
+
 def _can_submit_post(chat_id: int) -> bool:
     return chat_id not in BLOCKED_SUBMISSION_CHATS
 
@@ -236,7 +242,7 @@ def _maybe_send_advice(message, content: SubmissionContent) -> None:
         return
     predlojka_telegram_adapter.send_message(
         message.chat.id,
-        choice(ADVICE_MESSAGES),
+        TEXT("advice_messages"),
         reply_to_message_id=message.message_id,
         parse_mode="HTML",
     )
@@ -908,6 +914,7 @@ def _request_question_answer(call, payload: dict) -> None:
     }
     prompt = predlojka_telegram_adapter.send_message(
         admin,
+        # TODO: Убрать этот диалог в texts.json
         "Отлично! Я рада, что ты заинтересовался) Напиши ответ текстиком, а я передам в канал! (^-^)\n\nЕсли всё же передумал, напиши /cancel_question_answer",
         reply_to_message_id=call.message.message_id,
     )
@@ -1131,6 +1138,10 @@ def _submit_single_message(message) -> None:
     content_text = message.text if message.content_type == "text" else message.caption
     content = _parse_submission_text(content_text)
 
+    if is_hibernation_enabled():
+        _send_hibernation_message(message.chat.id, reply_to_message_id=message.message_id)
+        return
+
     if content.ignore_reaction:
         return
 
@@ -1190,6 +1201,9 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
         user = items[0].from_user
         captions = [item.caption for item in items if item.caption]
         content = _parse_submission_text("\n".join(captions))
+        if is_hibernation_enabled():
+            _send_hibernation_message(items[0].chat.id, reply_to_message_id=items[0].message_id)
+            return
         if content.ignore_reaction:
             return
         if content.route == "post" and not _can_submit_post(items[0].chat.id):
