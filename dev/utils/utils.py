@@ -14,28 +14,30 @@ COMMANDS_FILE_PATH = Path("dev/varibles/command_list.txt")
 def thx_for_message(user_name: str, mes_type: str) -> str:
     FUN = random.random()
 
+    time = "day" if 6 <= datetime.now().hour < 23 else "night"
+
     if mes_type == '!':
         if FUN < 0.9:
-            return TEXT("thx", "variants_v", name=user_name)
+            return TEXT("thx", time, "variants_v", name=user_name)
         elif FUN >= 0.98:
-            return TEXT("thx", "podval_variants_v", name=user_name)
+            return TEXT("thx", time, "podval_variants_v", name=user_name)
         else:
-            return TEXT("thx", "secret_variants_v", name=user_name)
+            return TEXT("thx", time, "secret_variants_v", name=user_name)
 
     elif mes_type == '?':
-        return TEXT("thx", "variants_q", name=user_name)
+        return TEXT("thx", time, "variants_q", name=user_name)
 
     elif mes_type == 'event':
-        return TEXT("thx", "events_variants")
+        return TEXT("thx", time, "events_variants")
 
     elif mes_type == 'report':
-        return TEXT("thx", "report_variants")
+        return TEXT("thx", time, "report_variants")
 
     elif mes_type == 'message':
-        return TEXT("thx", "message_variants")
+        return TEXT("thx", time, "message_variants")
 
     else:
-        return TEXT("thx", "variants_v", name=user_name)
+        return TEXT("thx", time, "variants_v", name=user_name)
 
 
 def _normalize_section_name(raw_name: str) -> str:

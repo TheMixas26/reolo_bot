@@ -11,3 +11,4 @@ handlers/__pycache__
 *.jsonl
 dev/database/scheduled_posts.json
 dev/analytics/bot_stats_summary.txt
+dev/handlers/predlojka_handlers.py

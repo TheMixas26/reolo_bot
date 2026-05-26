@@ -1138,7 +1138,7 @@ def _submit_single_message(message) -> None:
     content_text = message.text if message.content_type == "text" else message.caption
     content = _parse_submission_text(content_text)
 
-    if is_hibernation_enabled():
+    if is_hibernation_enabled() and message.chat.id not in [chat_mishas_den, channel, channel_red]:
         _send_hibernation_message(message.chat.id, reply_to_message_id=message.message_id)
         return
 
