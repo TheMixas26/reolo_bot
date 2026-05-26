@@ -1,4 +1,4 @@
-from random import choice, random
+import random
 from pathlib import Path
 from datetime import datetime
 from varibles.dialogue_loader import TEXT

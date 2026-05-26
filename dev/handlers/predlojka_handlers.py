@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
-from random import choice, random
+import random
 
 from telebot import types
 from varibles.dialogue_loader import TEXT
@@ -238,7 +238,7 @@ def _build_service_text(content: SubmissionContent, user_name: str) -> str:
 def _maybe_send_advice(message, content: SubmissionContent) -> None:
     if content.ignore_reaction:
         return
-    if random() >= 0.4:
+    if random.random() >= 0.4:
         return
     predlojka_telegram_adapter.send_message(
         message.chat.id,
