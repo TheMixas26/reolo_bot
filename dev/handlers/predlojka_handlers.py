@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import config as app_config
 import logging
 import threading
 import time
@@ -15,7 +14,7 @@ from varibles.dialogue_loader import TEXT
 
 from ai.ai_module import stream_ai
 from analytics.stats import log_event
-from config import predlojka_bot, admin, channel, channel_red, chat_mishas_den, backup_chat
+from config import predlojka_bot, admin, channel, channel_red, chat_mishas_den, backup_chat, HIBERNATION
 from database.scheduled_posts_db import create_scheduled_post, get_due_scheduled_posts, remove_scheduled_post
 from database.sqlite_db import add_to_post_counter, create_user_if_missing, user_exists
 from posting.models import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin
@@ -180,10 +179,6 @@ def _display_name(user) -> str:
 
 def _can_use_ai(chat_id: int) -> bool:
     return chat_id == chat_mishas_den or chat_id not in BLOCKED_SUBMISSION_CHATS
-
-
-def is_hibernation_enabled() -> bool:
-    return bool(getattr(app_config, "HIBERNATION", False))
 
 
 def _send_hibernation_message(chat_id: int, *, reply_to_message_id: int | None = None) -> None:
@@ -1138,7 +1133,7 @@ def _submit_single_message(message) -> None:
     content_text = message.text if message.content_type == "text" else message.caption
     content = _parse_submission_text(content_text)
 
-    if is_hibernation_enabled() and message.chat.id not in [chat_mishas_den, channel, channel_red]:
+    if HIBERNATION and message.chat.id not in [chat_mishas_den, channel, channel_red]:
         _send_hibernation_message(message.chat.id, reply_to_message_id=message.message_id)
         return
 
@@ -1201,7 +1196,7 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
         user = items[0].from_user
         captions = [item.caption for item in items if item.caption]
         content = _parse_submission_text("\n".join(captions))
-        if is_hibernation_enabled():
+        if HIBERNATION:
             _send_hibernation_message(items[0].chat.id, reply_to_message_id=items[0].message_id)
             return
         if content.ignore_reaction:

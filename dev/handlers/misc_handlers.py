@@ -1,7 +1,9 @@
 from config import predlojka_bot, admin, channel
 from analytics.stats import log_command_usage
 from posting.runtime import predlojka_telegram_adapter
+import logging
 
+logger = logging.getLogger(__name__)
 
 @predlojka_bot.message_handler(commands=['send_smth'])
 def handle_send_personal_daily(message):
@@ -42,7 +44,7 @@ def handle_send_personal_daily(message):
 def imperial_today(message):
     log_command_usage("predlojka", "today", message)
     try:
-        from config import calendar
+        from utils.imperial_сalender import calendar
 
         today = calendar.today()
 
@@ -60,7 +62,7 @@ def imperial_today(message):
         predlojka_telegram_adapter.reply_to(message, response)
 
     except Exception as e:
-        print(f"Ошибка в imperial_today: {e}")
+        logger.error(f"Ошибка в imperial_today: {e}")
         predlojka_telegram_adapter.reply_to(message, "Извините, но получить сегодняшнюю имперскую дату не получилось... (´-﹏-；)")
 
 
@@ -69,7 +71,7 @@ def imperial_today(message):
 def imperial_nearest_event(message):
     log_command_usage("predlojka", "nearest_event", message)
     try:
-        from config import calendar
+        from utils.imperial_сalender import calendar
 
         events = calendar.next_events(3)
         response = "🎉 Ближайшие праздники Имперского календаря:\n\n"
@@ -84,7 +86,7 @@ def imperial_nearest_event(message):
         predlojka_telegram_adapter.reply_to(message, response)
 
     except Exception as e:
-        print(f"Ошибка в imperial_nearest_event: {e}")
+        logger.error(f"Ошибка в imperial_nearest_event: {e}")
         predlojka_telegram_adapter.reply_to(
             message,
             "Простите, но получить ближайшие праздники Имперского календаря не получилось... (╯_╰)"
@@ -95,7 +97,7 @@ def imperial_nearest_event(message):
 def imperial_all_events(message):
     log_command_usage("predlojka", "all_events", message)
     try:
-        from config import calendar
+        from utils.imperial_сalender import calendar
 
         events = calendar.all_events_with_countdown()
         response = "📜 Все праздники Имперского календаря:\n\n"
@@ -110,7 +112,7 @@ def imperial_all_events(message):
         predlojka_telegram_adapter.reply_to(message, response)
 
     except Exception as e:
-        print(f"Ошибка в imperial_all_events: {e}")
+        logger.error(f"Ошибка в imperial_all_events: {e}")
         predlojka_telegram_adapter.reply_to(
             message,
             "Прошу прощения, но я не смогла получить все праздники Имперского календаря... (;︵;)"

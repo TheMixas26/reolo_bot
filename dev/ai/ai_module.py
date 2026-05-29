@@ -5,6 +5,9 @@ from config import CATALOG_ID, SECRET_KEY
 from settings import AI_PERSONA_NAME, CHANNEL_NAME, CREATOR_NAME, MAIN_BOT_NAME, PROJECT_NAME
 from yandex_ai_studio_sdk import AIStudio
 from random import choice
+import logging
+
+logger = logging.getLogger(__name__)
 
 sdk = AIStudio(
     folder_id=CATALOG_ID,
@@ -117,7 +120,7 @@ async def stream_ai(user_text, name):
             yield get_fallback_message()
             
     except Exception as e:
-        print(f"Ошибка в stream_ai: {e}")
+        logger.error(f"Ошибка в stream_ai: {e}")
         yield get_fallback_message()
 
 def ask_ai(user_text, name):
@@ -143,7 +146,7 @@ def ask_ai(user_text, name):
         return result
         
     except Exception as e:
-        print(f"Ошибка в ask_ai: {e}")
+        logger.error(f"Ошибка в ask_ai: {e}")
         return get_fallback_message()
     finally:
         loop.close()

@@ -8,6 +8,9 @@ from telebot import types
 from analytics.stats import EVENTS_LOG_PATH, write_summary_report
 from config import predlojka_bot, admin, backup_chat
 from settings import render_text_template
+import logging
+
+logger = logging.getLogger(__name__)
 
 COMMANDS_FILE_PATH = Path("dev/varibles/command_list.txt")
 
@@ -62,7 +65,7 @@ def _load_command_registry() -> dict[str, list[types.BotCommand]]:
 
                 parts = line.split(" - ", 1)
                 if len(parts) != 2:
-                    print(f"Неправильный формат строки: {line}")
+                    logger.warning(f"Неправильный формат строки: {line}")
                     continue
 
                 command, description = parts
@@ -94,7 +97,7 @@ def get_commands_for_set(bot_name: str = "predlojka", include_admin: bool = Fals
 
 def crisis_log(message: str):
     for i in range(100):
-        print(message)
+        logger.error(message)
 
 
 def crisis_tg(message: str):

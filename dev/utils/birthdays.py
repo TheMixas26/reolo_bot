@@ -7,54 +7,19 @@ from database.sqlite_db import (
 )
 from datetime import datetime, timedelta
 from random import choice, randint
+import logging
+from varibles.dialogue_loader import TEXT
+
+logger = logging.getLogger(__name__)
 
 BIRTHDAY_TABLE = "birthdays"
 
-PERSONAL_BIRTHDAY_TEMPLATES = [
-    (
-        "Здравствуйте, {name}! Сегодня ваш день рождения, а значит у Империи есть официальный повод поднять бокалы за ваше здоровье!\n\n"
-        "Спасибо вам за участие в жизни канала, за внимание к Предложке и за само ваше присутствие здесь. "
-        "Пусть впереди будет побольше тёплых людей, удачных дней и приятных сюрпризов. С праздником!"
-    ),
-    (
-        "{name}, подвальные архивы не соврали: сегодня действительно ваш день рождения!\n\n"
-        "От всей Империи поздравляю вас с этим днём. Желаю спокойствия, сил, хороших новостей и множества поводов улыбаться. "
-        "Спасибо, что вы с нами!"
-    ),
-    (
-        "С праздником, {name}!\n\n"
-        "Сегодня ваш день, и это отличный повод напомнить: мы очень ценим вас как подписчика и как часть нашего сообщества. "
-        "Пусть этот год принесёт вам побольше радости, вдохновения и приятных историй."
-    ),
-]
-
-PUBLIC_BIRTHDAY_TEMPLATES = [
-    (
-        "Товарищи подписчики! Сегодня у нас важный повод для радости.\n\n"
-        "🎉 День рождения отмечает {name}! Давайте поздравим его в комментариях, пожелаем всего самого доброго, "
-        "спокойного и счастливого. С праздником!"
-    ),
-    (
-        "Империя объявляет праздничную тревогу!\n\n"
-        "🎂 Сегодня день рождения у нашего подписчика {name}. Желаем ему здоровья, удачи, тёплых людей рядом и "
-        "побольше хороших событий. Поздравляем!"
-    ),
-    (
-        "Сегодня не обычный день.\n\n"
-        "🎉 Наш дорогой подписчик {name} празднует день рождения! Присоединяйтесь к поздравлениям и подарите человеку "
-        "немного добрых слов в комментариях."
-    ),
-]
-
-
 def _build_personal_congratulation(name: str) -> str:
-    return choice(PERSONAL_BIRTHDAY_TEMPLATES).format(name=name)
+    return TEXT("personal_bday").format(name=name)
 
 
 def _build_public_congratulation(name: str) -> str:
-    return choice(PUBLIC_BIRTHDAY_TEMPLATES).format(name=name)
-
-
+    return TEXT("channel_bday").format(name=name)
 
 
 
@@ -71,7 +36,7 @@ def send_daily_birthdays():
             metadata={"count": 1},
         )
     except Exception as e:
-        print(f"Ошибка при отправке дней рождений: {e}")
+        logger.error(f"Ошибка при отправке дней рождений: {e}")
 
 
 
@@ -93,7 +58,7 @@ def add_birthday(user_id, name, date_str) -> bool:
         upsert_birthday(user_id=user_id, name=name, day=bday.day, month=bday.month, year=year)
         return True
     except Exception as e:
-        print(f"Ошибка при добавлении дня рождения: {e}")
+        logger.error(f"Ошибка при добавлении дня рождения: {e}")
         return False
 
 def add_birthday_by_username(username, date_str, chat_id) -> tuple[bool, str | None]:
@@ -120,7 +85,7 @@ def add_birthday_by_username(username, date_str, chat_id) -> tuple[bool, str | N
         )
         return True, name
     except Exception as e:
-        print(f"Ошибка при добавлении дня рождения: {e}")
+        logger.error(f"Ошибка при добавлении дня рождения: {e}")
         return False, None
 
 def get_all_birthdays() -> list[dict]:
@@ -155,9 +120,7 @@ def plural_days(n: int) -> str:
 
 
 def refresh_user_names(chat_id: int) -> None:
-    """
-    Обновляет имена всех пользователей в базе, если они изменились.
-    """
+    """Обновляет имена всех пользователей в базе, если они изменились."""
     users = get_all_birthdays()
     for user in users:
         user_id = user.get("user_id")
@@ -169,7 +132,7 @@ def refresh_user_names(chat_id: int) -> None:
             if user.get("name") != name:
                 update_birthday_name(user_id, name)
         except Exception as e:
-            print(f"Не удалось обновить имя для user_id={user_id}: {e}")
+            logger.error(f"Не удалось обновить имя для user_id={user_id}: {e}")
 
 
 
@@ -227,7 +190,7 @@ def send_personal_birthday_notifications() -> None:
             predlojka_bot.send_message(user_id, fin_text)
             sent_count += 1
         except Exception as e:
-            print(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}")
+            logger.error(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}")
 
     if sent_count:
         log_event(
@@ -256,13 +219,13 @@ def send_birthday_congratulation() -> None:
                 predlojka_bot.send_message(user_id, congratulation_text_dm)
                 dm_sent += 1
             except Exception as e:
-                print(f"Ошибка личного поздравления для {user_id}: {e}")
+                logger.error(f"Ошибка личного поздравления для {user_id}: {e}")
 
             try:
                 predlojka_bot.send_message(channel, congratulation_text_ch)
                 channel_sent += 1
             except Exception as e:
-                print(f"Ошибка публичного поздравления для {user_id}: {e}")
+                logger.error(f"Ошибка публичного поздравления для {user_id}: {e}")
 
     if dm_sent:
         log_event(

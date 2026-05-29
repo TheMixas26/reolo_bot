@@ -6,106 +6,147 @@ from handlers.card_handlers import callbacks as card_callbacks
 from handlers.card_handlers import commands as card_commands
 from posting.runtime import vk_adapter
 from utils.schedulers import scheduler
+import subprocess
 
 import logging
 from threading import Thread
 import time
-import utils.schedulers # Импортируем планировщик, чтобы он запустился
+from utils.schedulers import start_scheduler
+import sys
+
+from DID.kochegar import StokerLogger
+from DID.varya import VaryaStokerLogger
+
 try:
     from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
 except Exception as e:
-    print(f"[CORE] - не получилось импортировать настройки. Файл config.py существует? {e}")
+    print(f"[КОЧЕГАР] - Ё-моё, настройки не грузятся! {e}")
     exit(1)
 
-# Настройка логирования
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bot_errors.log'),
-        logging.StreamHandler()  # Также выводим в консоль
+        logging.FileHandler('bot_errors.log', encoding='utf-8'),
+        logging.StreamHandler()
     ]
 )
 
 logger = logging.getLogger(__name__)
+kochegar = StokerLogger()
+varya = VaryaStokerLogger()
+
+def run_pre_launch_tests():    
+    kochegar.start_test_suite()
+    kochegar.say("🔧 Эй, pytest, проверь-ка систему!")
+    
+    # Просто запускаем pytest и смотрим на код возврата
+    exit_code = subprocess.call([sys.executable, "-m", "pytest", "tests/", "-v"])
+    
+    if exit_code == 0:
+        kochegar.say("✅ Всё пучком! Тесты прошли!")
+        kochegar.all_tests_passed()
+        return True
+    else:
+        kochegar.say("💀 ТЕСТЫ НЕ ПРОШЛИ! Смотри выше, где pytest ругается", "error")
+        kochegar.say("🧹 Чини, а я пока золу выгребу...", "warn")
+        return False
 
 def run_bot(bot_instance, bot_name, analytics_bot_name):
-    """Запускает бота в отдельном потоке"""
-    logger.info(f"🚀 Запуск {bot_name}...")
-    bot_info = bot_instance.get_me()
-    logger.info(f"ID бота {bot_name}: {bot_info.id}")
-    log_event("bot_started", bot=analytics_bot_name, metadata={"telegram_bot_id": bot_info.id, "display_name": bot_name})
-    
-    try:
-        # ВАЖНО: используем infinity_polling для корректной работы callback-запросов
-        bot_instance.infinity_polling(
-            timeout=60,
-            long_polling_timeout=30,
-            logger_level=logging.INFO,
-            allowed_updates=['message', 'callback_query', 'edited_message']
-        )
-    except Exception as e:
-        logger.error(f"{bot_name} упал: {e}", exc_info=True)
-        log_event("bot_crashed", bot=analytics_bot_name, metadata={"display_name": bot_name, "error": str(e)[:300]})
-        time.sleep(10)
-        log_event("bot_restart_scheduled", bot=analytics_bot_name, metadata={"display_name": bot_name})
-        run_bot(bot_instance, bot_name, analytics_bot_name)  # рекурсивный перезапуск
+    """Запускает бота в отдельном потоке (с комментариями Кочегара)"""
+    restart_delay = 10
+
+    while True:
+
+        kochegar.starting_bot(bot_name)
+        try:
+            bot_info = bot_instance.get_me()
+            kochegar.bot_started(bot_name, bot_info.id)
+            log_event("bot_started", bot=analytics_bot_name, metadata={"telegram_bot_id": bot_info.id, "display_name": bot_name})
+            
+            # Запускаем polling
+            bot_instance.infinity_polling(
+                timeout=60,
+                long_polling_timeout=30,
+                logger_level=logging.INFO,
+                allowed_updates=['message', 'callback_query', 'edited_message']
+            )
+        except Exception as e:
+            kochegar.bot_crashed(bot_name, str(e))
+            log_event("bot_crashed", bot=analytics_bot_name, metadata={"display_name": bot_name, "error": str(e)[:300]})
+            kochegar.say("🔄 Кочегар стучит по трубам, пробуем снова...")
+            time.sleep(restart_delay)
+            restart_delay = min(restart_delay * 1.5, 60)
+
 
 if __name__ == "__main__":
     # Очищаем лог-файл
-    with open('bot_errors.log', 'w') as f:
+    with open('bot_errors.log', 'w', encoding='utf-8') as f:
         f.write("=== Новая сессия ===\n")
-
-    if scheduler.get_job("publish_scheduled_posts") is None:
-        scheduler.add_job(
-            predlojka_handlers.publish_due_scheduled_posts,
-            "interval",
-            minutes=1,
-            id="publish_scheduled_posts",
-            max_instances=1,
-            coalesce=True,
-            misfire_grace_time=120,
-        )
+        f.write("🔥 КОЧЕГАР ЗАСТУПИЛ НА СМЕНУ 🔥\n\n")
     
-    logger.info("⚠️ ЗАПУСК БОТА В DEBUG MODE!!!!") if DEBUG_MODE else logger.info("🎮 Запускаю всех ботов...") 
+    kochegar.say("🏭 Здорово, работяги! Кочегар на месте, топка горит!")
+
+    if DEBUG_MODE:
+        kochegar.debug_mode()
+    else:
+        kochegar.say("🎮 ПРОДАКШН РЕЖИМ: Все системы на пределе, жми на газ!")
+    
     log_event("system_bootstrap", bot="system", metadata={"debug_mode": DEBUG_MODE})
     
-    # Запускаем каждого бота в отдельном потоке
+    # ========== КОЧЕГАР ЗАПУСКАЕТ ТЕСТЫ ==========
+    kochegar.say("🔧 ТЕПЕРЬ ТЕСТЫ! Кочегар всё проверит...")
+    
+    if not run_pre_launch_tests():
+        kochegar.say("💀 ТЕСТЫ НЕ ПРОШЛИ! Боты не будет запущены!", "error")
+        kochegar.say("📝 Смотри лог выше, я там всё написал...")
+        sys.exit(1)
+    
+    # ========== ТЕСТЫ ПРОШЛИ - ЗАПУСКАЕМ БОТОВ ==========
+    start_scheduler()
+
+    kochegar.say("🎉 УРА! ТЕСТЫ ПРОШЛИ! ЗАПУСКАЮ ВСЕХ БОТОВ!")
+    
     threads = []
     
     # Предложка
-    t1 = Thread(target=run_bot, args=(predlojka_bot, "Предложка", "predlojka"), daemon=True)
+    t1 = Thread(target=run_bot, args=(predlojka_bot, "ПРЕДЛОЖКА", "predlojka"), daemon=True)
     t1.start()
     threads.append(t1)
-    
+    varya.say("Я на месте!!!")
     
     # RPG
     t2 = Thread(target=run_bot, args=(rpg_bot, "RPG", "rpg"), daemon=True)
     t2.start()
     threads.append(t2)
-
+    kochegar.say("🎲 RPG бот запущен")
+    
+    # VK
     if vk_adapter is not None:
         t_vk = Thread(target=vk_handlers.run_vk_listener, daemon=True)
         t_vk.start()
         threads.append(t_vk)
-
-    if DEBUG_MODE:
-        pass
-        
+        kochegar.say("📱 VK адаптер запущен")
     else:
-        # Банк
-        t3 = Thread(target=run_bot, args=(bank_bot, "Банк", "bank"), daemon=True)
+        kochegar.say("⚠️ VK адаптер не подключён", "warn")
+    
+    # Банк (только не в DEBUG режиме)
+    if DEBUG_MODE:
+        kochegar.say("🔧 Отладка: БАНК НЕ ЗАПУЩЕН (в DEBUG режиме он отдыхает)", "warn")
+    else:
+        t3 = Thread(target=run_bot, args=(bank_bot, "БАНК", "bank"), daemon=True)
         t3.start()
         threads.append(t3)
-        
-        
+        kochegar.say("💰 Банковский бот запущен")
     
-    logger.info("✅ Все боты запущены. Ожидание сообщений...")
+    kochegar.system_ready()
     
     # Основной поток просто ждёт
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
+        kochegar.say("👋 Всё, Кочегар уходит... Золу выгреб, дверь закрыл. Пока, работяги!")
         logger.info("🛑 Остановка всех ботов...")
         # scheduler.shutdown()  # если нужно остановить планировщик

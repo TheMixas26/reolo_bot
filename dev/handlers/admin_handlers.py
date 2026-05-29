@@ -11,7 +11,9 @@ import subprocess
 from random import choice
 from utils.weather import send_weather
 from varibles.dialogue_loader import TEXT
+import logging
 
+logger = logging.getLogger(__name__)
 
 def _preview_scheduled_payload(payload: dict, content_type: str) -> str:
     if content_type == "album":
@@ -110,7 +112,7 @@ def handle_send_daily(message):
     try:
         send_daily_birthdays()
     except Exception as e:
-        print(e)
+        logger.error(e)
 
 @predlojka_bot.message_handler(commands=['send_personal_daily'])
 def handle_send_personal_daily(message):
@@ -120,7 +122,7 @@ def handle_send_personal_daily(message):
     try:
         send_personal_birthday_notifications()
     except Exception as e:
-        print(e)
+        logger.error(e)
 
 
 @predlojka_bot.message_handler(commands=['fake_post'])
@@ -199,7 +201,7 @@ def handle_public_notify(message):
                 predlojka_telegram_adapter.send_message(user['user_id'], message.text)
                 sent_count += 1
             except Exception as e:
-                print(f"Ошибка при отправке сообщения пользователю {user['user_id']}: {e}")
+                logger.error(f"Ошибка при отправке сообщения пользователю {user['user_id']}: {e}")
         log_event("broadcast_completed", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"sent_count": sent_count})
         predlojka_telegram_adapter.reply_to(message, TEXT("broadcast_done"))
     except Exception as e:

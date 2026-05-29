@@ -5,6 +5,9 @@ from analytics.stats import log_command_usage, log_event
 from posting.runtime import predlojka_telegram_adapter
 from settings import MAIN_BOT_NAME, PROJECT_NAME, RPG_BOT_NAME, RPG_BOT_USERNAME, render_text_template
 from varibles.dialogue_loader import TEXT
+import logging
+
+logger = logging.getLogger(__name__)
 
 @predlojka_bot.message_handler(commands=['start'])
 def start(message):
@@ -46,7 +49,7 @@ def changelog(message):
                 parse_mode='HTML'
             )
     except Exception as e:
-        print(e)
+        logger.error(e)
         predlojka_telegram_adapter.reply_to(
             message,
             text=TEXT("err", "changelog_command")
@@ -65,7 +68,7 @@ def help(message):
             help_string = render_text_template(f.read())
         predlojka_telegram_adapter.reply_to(message, text=help_string, parse_mode='HTML')
     except Exception as e:
-        print(e)
+        logger.error(e)
         predlojka_telegram_adapter.reply_to(
             message,
             text=TEXT("err", "help_command")

@@ -1,7 +1,7 @@
 import json
 import threading
 from quickjs import Context
-from config import predlojka_bot, channel
+from config import predlojka_bot, channel, chat_mishas_den
 
 class ImperialCalendar:
     def __init__(self, js_path: str):
