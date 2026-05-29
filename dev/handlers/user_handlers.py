@@ -178,8 +178,8 @@ def handle_personal_notifications(message):
             metadata={"enabled": not current},
         )
         if not current:
-            predlojka_telegram_adapter.reply_to(message, "Личные уведомления о дне рождения включены!")
+            predlojka_telegram_adapter.reply_to(message, TEXT("personal_bday_enabled"))
         else:
-            predlojka_telegram_adapter.reply_to(message, "Личные уведомления о дне рождения отключены!")
+            predlojka_telegram_adapter.reply_to(message, TEXT("personal_bday_disabled"))
     else:
-        predlojka_telegram_adapter.reply_to(message, "Сначала добавьте свой день рождения через /add_birthday.")
+        predlojka_telegram_adapter.reply_to(message, TEXT("add_bday_before"))

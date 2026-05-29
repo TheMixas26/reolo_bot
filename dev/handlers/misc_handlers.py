@@ -2,9 +2,11 @@ from config import predlojka_bot, admin, channel
 from analytics.stats import log_command_usage
 from posting.runtime import predlojka_telegram_adapter
 import logging
+from varibles.dialogue_loader import TEXT
 
 logger = logging.getLogger(__name__)
 
+# !!! Remove this thing НАХУЙ
 @predlojka_bot.message_handler(commands=['send_smth'])
 def handle_send_personal_daily(message):
     log_command_usage("predlojka", "send_smth", message)
@@ -63,7 +65,7 @@ def imperial_today(message):
 
     except Exception as e:
         logger.error(f"Ошибка в imperial_today: {e}")
-        predlojka_telegram_adapter.reply_to(message, "Извините, но получить сегодняшнюю имперскую дату не получилось... (´-﹏-；)")
+        predlojka_telegram_adapter.reply_to(message, TEXT("err", "get_today_events"))
 
 
 
@@ -89,7 +91,7 @@ def imperial_nearest_event(message):
         logger.error(f"Ошибка в imperial_nearest_event: {e}")
         predlojka_telegram_adapter.reply_to(
             message,
-            "Простите, но получить ближайшие праздники Имперского календаря не получилось... (╯_╰)"
+            TEXT("err", "get_nearest_events")
         )
 
 
@@ -115,5 +117,5 @@ def imperial_all_events(message):
         logger.error(f"Ошибка в imperial_all_events: {e}")
         predlojka_telegram_adapter.reply_to(
             message,
-            "Прошу прощения, но я не смогла получить все праздники Имперского календаря... (;︵;)"
+            TEXT("err", "get_all_events")
         )
