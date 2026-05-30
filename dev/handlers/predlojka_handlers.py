@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+print("PREDLOJKA_HANDLERS IMPORTED")
+
 import asyncio
 import logging
 import threading
@@ -1170,14 +1172,16 @@ def _submit_single_message(message) -> None:
     logger.info(f"Получена запись для модерации: {message.content_type}")
 
 
-@predlojka_bot.message_handler(content_types=["sticker", "text", "document", "audio", "voice"])
+@predlojka_bot.message_handler(content_types=["text", "sticker", "document", "audio", "voice"],
+                                func=lambda m: not (m.text and m.text.startswith("/")))
 def accepter(message):
+    print("ACCEPTER:", message.text)
     if not user_exists(message.from_user.id):
         create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
 
-    if message.content_type == "text" and message.text.startswith("/"):
-        predlojka_telegram_adapter.reply_to(message, "Боюсь, такой команды я не знаю... (｡•́︿•̀｡)")
-        return
+    # if message.content_type == "text" and message.text.startswith("/"):
+    #     predlojka_telegram_adapter.reply_to(message, "Боюсь, такой команды я не знаю... (｡•́︿•̀｡)")
+    #     return
 
     _submit_single_message(message)
 

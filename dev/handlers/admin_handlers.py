@@ -2,7 +2,6 @@ from config import predlojka_bot, admin, channel, bank_bot, rpg_bot
 from telebot import types
 from bank import edit_currency_info
 from utils.utils import get_commands_for_set, backupDB
-from utils.birthdays import send_daily_birthdays, send_personal_birthday_notifications
 from database.scheduled_posts_db import list_scheduled_posts
 from database.sqlite_db import get_all_users
 from analytics.stats import log_command_usage, log_event
@@ -101,28 +100,6 @@ def set_commands(message=None):
 
     if message:
         predlojka_telegram_adapter.reply_to(message, TEXT('setcmd_successfully'))
-
-
-
-@predlojka_bot.message_handler(commands=['send_daily'])
-def handle_send_daily(message):
-    if message.from_user.id != admin:
-        return
-    log_command_usage("predlojka", "send_daily", message)
-    try:
-        send_daily_birthdays()
-    except Exception as e:
-        logger.error(e)
-
-@predlojka_bot.message_handler(commands=['send_personal_daily'])
-def handle_send_personal_daily(message):
-    if message.from_user.id != admin:
-        return
-    log_command_usage("predlojka", "send_personal_daily", message)
-    try:
-        send_personal_birthday_notifications()
-    except Exception as e:
-        logger.error(e)
 
 
 @predlojka_bot.message_handler(commands=['fake_post'])

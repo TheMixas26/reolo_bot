@@ -1,7 +1,9 @@
 """Точка входа в бота, запускайте именно этот файл."""
 
 from analytics.stats import log_event
-from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, predlojka_handlers, bank_handlers, vk_handlers
+import config as cfg
+from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, bank_handlers, vk_handlers
+# from handlers import predlojka_handlers
 from handlers.card_handlers import callbacks as card_callbacks
 from handlers.card_handlers import commands as card_commands
 from posting.runtime import vk_adapter
@@ -13,6 +15,10 @@ from threading import Thread
 import time
 from utils.schedulers import start_scheduler
 import sys
+from posting.runtime import predlojka_telegram_adapter
+
+from core.context import AppContext
+from plugins.birthdays import BirthdaysPlugin
 
 from DID.kochegar import StokerLogger
 from DID.varya import VaryaStokerLogger
@@ -30,12 +36,33 @@ logging.basicConfig(
     handlers=[
         logging.FileHandler('bot_errors.log', encoding='utf-8'),
         logging.StreamHandler()
-    ]
-)
+    ])
+
+
 
 logger = logging.getLogger(__name__)
 kochegar = StokerLogger()
 varya = VaryaStokerLogger()
+
+
+context = AppContext(
+    predlojka_bot=predlojka_bot,
+    bank_bot=bank_bot,
+    rpg_bot=rpg_bot,
+    scheduler=scheduler,
+    logger=logger,
+    config=cfg,
+    tg_adapter=predlojka_telegram_adapter,
+    admin_id=admin,
+)
+
+
+
+BirthdaysPlugin.setup(context)
+
+
+
+
 
 def run_pre_launch_tests():    
     kochegar.start_test_suite()
