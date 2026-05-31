@@ -23,3 +23,27 @@ class AppContext:
         self.config = config
         self.tg_adapter = tg_adapter
         self.admin_id = admin_id
+        self.logger_factory = self._make_logger_factory()
+
+
+    def _make_logger_factory(self):
+        base_logger = self.logger
+
+        def factory(name: str, persona: str | None = None):
+            child = base_logger.getChild(name)
+
+            def log(message, level="info"):
+                prefix = f"[{persona or name}]"
+
+                if level == "info":
+                    child.info(f"{prefix} {message}")
+                elif level in ["warn", "warning"]:
+                    child.warning(f"{prefix} {message}")
+                elif level == "error":
+                    child.error(f"{prefix} {message}")
+                elif level == "debug":
+                    child.debug(f"{prefix} {message}")
+
+            return type("PluginLogger", (), {"say": log})
+
+        return factory

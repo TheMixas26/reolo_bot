@@ -1,22 +1,6 @@
 import json
-import sqlite3
-from pathlib import Path
-from threading import Lock
 from card_game.catalog import CARD_DEFINITIONS, PACK_DEFINITIONS, get_rarity_label, sort_cards
-
-DB_PATH = Path("dev/database/bot.sqlite3")
-_DB_LOCK = Lock()
-
-def _get_connection() -> sqlite3.Connection:
-    """Создает папку для базы данных, если ее нет, и возвращает соединение с базой данных"""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-_conn = _get_connection()
-
+from .connection import _conn, _DB_LOCK, _get_connection, DB_PATH
 
 def _seed_cards_if_empty() -> None:
     cur = _conn.cursor()
@@ -245,55 +229,6 @@ def add_balance(user_id: int, amount: float) -> float:
         _conn.execute("UPDATE user_accounts SET balance = ? WHERE user_id = ?", (new_balance, user_id))
         _conn.commit()
         return new_balance
-
-
-# ---- birthdays ----
-def upsert_birthday(user_id: int, name: str, day: int, month: int, year: int, username: str | None = None) -> None:
-    """Создает или обновляет запись о дне рождения пользователя. Если username не передан, сохраняет существующий username (если он есть)"""
-    with _DB_LOCK:
-        _conn.execute(
-            """
-            INSERT INTO birthdays(user_id, name, username, day, month, year)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                name = excluded.name,
-                username = COALESCE(excluded.username, birthdays.username),
-                day = excluded.day,
-                month = excluded.month,
-                year = excluded.year
-            """,
-            (user_id, name, username, day, month, year),
-        )
-        _conn.commit()
-
-
-def get_all_birthdays() -> list[dict]:
-    """Возвращает список всех записей о днях рождения пользователей с их данными (user_id, name, username, day, month, year, personal_notify)"""
-    rows = _conn.execute("SELECT user_id, name, username, day, month, year, personal_notify FROM birthdays").fetchall()
-    return [dict(row) for row in rows]
-
-
-def update_birthday_name(user_id: int, name: str) -> None:
-    """Обновляет имя, связанное с днем рождения пользователя. Если пользователь не найден... ничего не делает"""
-    with _DB_LOCK:
-        _conn.execute("UPDATE birthdays SET name = ? WHERE user_id = ?", (name, user_id))
-        _conn.commit()
-
-
-def get_birthday(user_id: int) -> dict | None:
-    """Возвращает запись о дне рождения пользователя с его данными (user_id, name, username, day, month, year, personal_notify). Если пользователь не найден, возвращает None"""
-    row = _conn.execute(
-        "SELECT user_id, name, username, day, month, year, personal_notify FROM birthdays WHERE user_id = ?",
-        (user_id,),
-    ).fetchone()
-    return dict(row) if row else None
-
-
-def set_personal_notify(user_id: int, enabled: bool) -> None:
-    """Включает или отключает персональные уведомления о дне рождения для пользователя. Если пользователь не найден... ничего не делает"""
-    with _DB_LOCK:
-        _conn.execute("UPDATE birthdays SET personal_notify = ? WHERE user_id = ?", (1 if enabled else 0, user_id))
-        _conn.commit()
 
 
 # ---- rpg_players ----

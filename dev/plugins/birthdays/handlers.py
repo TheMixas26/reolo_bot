@@ -1,25 +1,18 @@
-print("BIRTHDAY_HANDLERS IMPORTED")
-
 from analytics.stats import log_command_usage, log_event
 from config import chat_mishas_den
 from varibles.dialogue_loader import TEXT
-from .service import send_personal_birthday_notifications, add_birthday, add_birthday_by_username, send_daily_birthdays
-
-# TODO: Перенести эти ипортируемые functions into service.py
-from database.sqlite_db import get_birthday, set_personal_notify
+from .service import send_personal_birthday_notifications, add_birthday, add_birthday_by_username, send_daily_birthdays, get_user_birthday, change_personal_notify
 
 
 
 def register_handlers(context):
-    print("BIRTHDAY_HANDLERS REGISTERING")
-    logger = context.logger
+    logger = context.logger_factory("birthdays", persona="Никитос")
     bot = context.predlojka_bot
     predlojka_telegram_adapter = context.tg_adapter
     admin = context.admin_id
 
 
-    logger.debug("Плагин дней рождений регестрирует свой хендлер")
-    print("BIRTHDAY REGISTER")
+    logger.say("От имени плагина дней рождений регестрирую команды...")
     # ------- Handlers registering -----------
 
     def handle_add_birthday_by_username(message):
@@ -93,10 +86,10 @@ def register_handlers(context):
     def handle_personal_notifications(message):
         log_command_usage("predlojka", "personal_notifications", message)
         user_id = message.from_user.id
-        user = get_birthday(user_id)
+        user = get_user_birthday(user_id)
         if user:
             current = user.get("personal_notify", False)
-            set_personal_notify(user_id, not current)
+            change_personal_notify(user_id, not current)
             log_event(
                 "birthday_personal_notifications_toggled",
                 bot="predlojka",
@@ -118,7 +111,7 @@ def register_handlers(context):
         try:
             send_personal_birthday_notifications(context)
         except Exception as e:
-            logger.error(e)
+            logger.say(e, "error")
 
     
     def handle_send_daily(message):
@@ -128,7 +121,7 @@ def register_handlers(context):
         try:
             send_daily_birthdays(context)
         except Exception as e:
-            logger.error(e)
+            logger.say(e, "error")
 
 
 
@@ -161,3 +154,5 @@ def register_handlers(context):
         handle_send_daily,
         commands=['send_daily']
     )
+
+    logger.say("Все команды добавлены!")

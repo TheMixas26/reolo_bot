@@ -19,9 +19,7 @@ from posting.runtime import predlojka_telegram_adapter
 
 from core.context import AppContext
 from plugins.birthdays import BirthdaysPlugin
-
-from DID.kochegar import StokerLogger
-from DID.varya import VaryaStokerLogger
+from plugins.weather import WeatherPlugin
 
 try:
     from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
@@ -41,8 +39,7 @@ logging.basicConfig(
 
 
 logger = logging.getLogger(__name__)
-kochegar = StokerLogger()
-varya = VaryaStokerLogger()
+
 
 
 context = AppContext(
@@ -57,15 +54,19 @@ context = AppContext(
 )
 
 
+kochegar = context.logger_factory("core", persona="Кочегар")
+varya = context.logger_factory("predlojka", persona="Варя")
+
 
 BirthdaysPlugin.setup(context)
-
+WeatherPlugin.setup(context)
 
 
 
 
 def run_pre_launch_tests():    
-    kochegar.start_test_suite()
+    kochegar.say("🌅 Ну чё, день начинается... Топить будем?")
+    kochegar.say("🔍 Проверяю систему, как учил старый машинист...", "debug")
     kochegar.say("🔧 Эй, pytest, проверь-ка систему!")
     
     # Просто запускаем pytest и смотрим на код возврата
@@ -73,7 +74,8 @@ def run_pre_launch_tests():
     
     if exit_code == 0:
         kochegar.say("✅ Всё пучком! Тесты прошли!")
-        kochegar.all_tests_passed()
+        kochegar.say("🎉 УРА! Все тесты прошли! Можно топку разжигать!")
+        kochegar.say("💨 Пар пошёл, бот загружается...")
         return True
     else:
         kochegar.say("💀 ТЕСТЫ НЕ ПРОШЛИ! Смотри выше, где pytest ругается", "error")
@@ -86,10 +88,10 @@ def run_bot(bot_instance, bot_name, analytics_bot_name):
 
     while True:
 
-        kochegar.starting_bot(bot_name)
+        kochegar.say(f"🚂 Запускаю {bot_name}... Держи дверь, ща пару поддадим!")
         try:
             bot_info = bot_instance.get_me()
-            kochegar.bot_started(bot_name, bot_info.id)
+            kochegar.say(f"✨ {bot_name} (ID: {bot_info.id}) - работает! Как по маслу!")
             log_event("bot_started", bot=analytics_bot_name, metadata={"telegram_bot_id": bot_info.id, "display_name": bot_name})
             
             # Запускаем polling
@@ -100,7 +102,8 @@ def run_bot(bot_instance, bot_name, analytics_bot_name):
                 allowed_updates=['message', 'callback_query', 'edited_message']
             )
         except Exception as e:
-            kochegar.bot_crashed(bot_name, str(e))
+            kochegar.say(f"💥 {bot_name} рухнул! {e}", "error")
+            kochegar.say("🔧 Стучу по котлу молотком, перезапускаю...", "warn")
             log_event("bot_crashed", bot=analytics_bot_name, metadata={"display_name": bot_name, "error": str(e)[:300]})
             kochegar.say("🔄 Кочегар стучит по трубам, пробуем снова...")
             time.sleep(restart_delay)
@@ -116,7 +119,7 @@ if __name__ == "__main__":
     kochegar.say("🏭 Здорово, работяги! Кочегар на месте, топка горит!")
 
     if DEBUG_MODE:
-        kochegar.debug_mode()
+        kochegar.say("🔧 РЕЖИМ ОТЛАДКИ! Я буду всё комментировать, даже как угли пересыпаю...", "debug")
     else:
         kochegar.say("🎮 ПРОДАКШН РЕЖИМ: Все системы на пределе, жми на газ!")
     
@@ -167,7 +170,8 @@ if __name__ == "__main__":
         threads.append(t3)
         kochegar.say("💰 Банковский бот запущен")
     
-    kochegar.system_ready()
+    kochegar.say("🎪 ВСЁ! Бот в строю! Могу пойти чайку попить...")
+    kochegar.say("☕ Кочегар уходит в тень, но следит... Всегда следит.")
     
     # Основной поток просто ждёт
     try:

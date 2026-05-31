@@ -1,9 +1,10 @@
 from config import predlojka_bot, chat_mishas_den, admin, channel
 from analytics.stats import log_event
-from database.sqlite_db import (
+from .db import (
     upsert_birthday,
     get_all_birthdays as fetch_all_birthdays,
     update_birthday_name,
+    get_birthday, set_personal_notify
 )
 from datetime import datetime
 from random import randint
@@ -23,7 +24,7 @@ def _build_public_congratulation(name: str) -> str:
 
 def send_daily_birthdays(context):
     """Отправляет ежедневное уведомление в чат с днями рождений."""
-    logger = context.logger
+    logger = context.logger_factory("birthdays", persona="Никитос")
     try:
         text = format_birthdays_list(context)
         predlojka_bot.send_message(chat_mishas_den, text)
@@ -35,14 +36,14 @@ def send_daily_birthdays(context):
             metadata={"count": 1},
         )
     except Exception as e:
-        logger.error(f"Ошибка при отправке дней рождений: {e}")
+        logger.say(f"Ошибка при отправке дней рождений: {e}", "error")
 
 
 def send_personal_birthday_notifications(context) -> None:
     """
     Отправляет каждому пользователю личное уведомление о его дне рождения.
     """
-    logger = context.logger
+    logger = context.logger_factory("birthdays", persona="Никитос")
     bdays = get_all_birthdays()
     sent_count = 0
     for b in bdays:
@@ -66,7 +67,7 @@ def send_personal_birthday_notifications(context) -> None:
             predlojka_bot.send_message(user_id, fin_text)
             sent_count += 1
         except Exception as e:
-            logger.error(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}")
+            logger.say(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}", "error")
 
     if sent_count:
         log_event(
@@ -82,7 +83,7 @@ def add_birthday(context, user_id, name, date_str) -> bool:
     Добавляет или обновляет день рождения пользователя.
     date_str — строка в формате 'ДД.ММ' или 'ДД.ММ.ГГГГ'
     """
-    logger = context.logger
+    logger = context.logger_factory("birthdays", persona="Никитос")
     try:
         # Преобразуем дату
         if len(date_str.split(".")) == 2:
@@ -94,13 +95,13 @@ def add_birthday(context, user_id, name, date_str) -> bool:
         upsert_birthday(user_id=user_id, name=name, day=bday.day, month=bday.month, year=year)
         return True
     except Exception as e:
-        logger.error(f"Ошибка при добавлении дня рождения: {e}")
+        logger.say(f"Ошибка при добавлении дня рождения: {e}", "error")
         return False
 
 def add_birthday_by_username(context, username, date_str, chat_id) -> tuple[bool, str | None]:
     """Добавляет или обновляет день рождения пользователя по его имени пользователя в Telegram.
     date_str — строка в формате 'ДД.ММ' или 'ДД.ММ.ГГГГ'"""
-    logger = context.logger
+    logger = context.logger_factory("birthdays", persona="Никитос")
     try:
         user = predlojka_bot.get_chat_member(chat_id, username)
         first_name = user.user.first_name or ""
@@ -122,7 +123,7 @@ def add_birthday_by_username(context, username, date_str, chat_id) -> tuple[bool
         )
         return True, name
     except Exception as e:
-        logger.error(f"Ошибка при добавлении дня рождения: {e}")
+        logger.say(f"Ошибка при добавлении дня рождения: {e}", "error")
         return False, None
 
 def get_all_birthdays() -> list[dict]:
@@ -158,7 +159,7 @@ def plural_days(n: int) -> str:
 
 def refresh_user_names(context, chat_id: int) -> None:
     """Обновляет имена всех пользователей в базе, если они изменились."""
-    logger = context.logger
+    logger = context.logger_factory("birthdays", persona="Никитос")
     users = get_all_birthdays()
     for user in users:
         user_id = user.get("user_id")
@@ -170,7 +171,7 @@ def refresh_user_names(context, chat_id: int) -> None:
             if user.get("name") != name:
                 update_birthday_name(user_id, name)
         except Exception as e:
-            logger.error(f"Не удалось обновить имя для user_id={user_id}: {e}")
+            logger.say(f"Не удалось обновить имя для user_id={user_id}: {e}", "error")
 
 
 
@@ -205,7 +206,7 @@ def format_birthdays_list(context, who_asking_flag='channel') -> str:
 
 def send_birthday_congratulation(context) -> None:
     """Отправляет поздравление с днем рождения пользователю."""
-    logger = context.logger
+    logger = context.logger_factory("birthdays", persona="Никитос")
     bdays = get_all_birthdays()
     dm_sent = 0
     channel_sent = 0
@@ -223,13 +224,13 @@ def send_birthday_congratulation(context) -> None:
                 predlojka_bot.send_message(user_id, congratulation_text_dm)
                 dm_sent += 1
             except Exception as e:
-                logger.error(f"Ошибка личного поздравления для {user_id}: {e}")
+                logger.say(f"Ошибка личного поздравления для {user_id}: {e}", "error")
 
             try:
                 predlojka_bot.send_message(channel, congratulation_text_ch)
                 channel_sent += 1
             except Exception as e:
-                logger.error(f"Ошибка публичного поздравления для {user_id}: {e}")
+                logger.say(f"Ошибка публичного поздравления для {user_id}: {e}", "error")
 
     if dm_sent:
         log_event(
@@ -244,3 +245,12 @@ def send_birthday_congratulation(context) -> None:
             chat_id=channel,
             metadata={"count": channel_sent},
         )
+
+
+
+def get_user_birthday(user_id):
+    get_birthday(user_id)
+
+
+def change_personal_notify(user_id, flag):
+    set_personal_notify(user_id, flag)

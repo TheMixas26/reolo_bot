@@ -17,7 +17,7 @@ class BirthdaysPlugin:
 
     @staticmethod
     def setup(context):
-        logger = context.logger
-        logger.debug("BirtdaysPlugin setup")
+        logger = context.logger_factory("birthdays", persona="Никитос")
+        logger.say("Доброе, выступаю на смену!")
         BirthdaysPlugin.register_jobs(context)
         register_handlers(context)

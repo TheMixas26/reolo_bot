@@ -8,7 +8,6 @@ from analytics.stats import log_command_usage, log_event
 from posting.runtime import predlojka_telegram_adapter
 import subprocess
 from random import choice
-from utils.weather import send_weather
 from varibles.dialogue_loader import TEXT
 import logging
 
@@ -196,10 +195,3 @@ def send_actual_db(message):
     predlojka_telegram_adapter.reply_to(message, TEXT('backup_successfully_send'))
 
 
-@predlojka_bot.message_handler(commands=['send_weather'])
-def command_to_send_weather(message):
-    if message.from_user.id != admin:
-        return
-    log_command_usage("predlojka", "send_weather", message)
-    send_weather()
-    predlojka_telegram_adapter.reply_to(message, TEXT("forced_weather"))
