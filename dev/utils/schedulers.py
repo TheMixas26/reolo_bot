@@ -1,4 +1,3 @@
-from handlers.predlojka_handlers import publish_due_scheduled_posts
 from apscheduler.schedulers.background import BackgroundScheduler
 from utils.utils import backupDB, bot_reboot
 from utils.imperial_сalender import check_imperial_events
@@ -27,7 +26,4 @@ def start_scheduler() -> None:
     # Обновляем команды бота в телеграме раз в день, ну так, чисто на случай
     scheduler.add_job(set_commands, 'cron', hour=0, minute=0, misfire_grace_time=3600)
 
-    # Публикуем запланированные посты каждую минуту
-    scheduler.add_job(publish_due_scheduled_posts,"interval", minutes=1, id="publish_scheduled_posts", max_instances=1, coalesce=True, misfire_grace_time=120)
-
-    scheduler.start()
+    scheduler.start() 

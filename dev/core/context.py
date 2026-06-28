@@ -14,6 +14,9 @@ class AppContext:
         config: Any,
         tg_adapter,
         admin_id: int,
+        ai_service: Any | None = None,
+        post_publisher: Any | None = None,
+        telegram_admin_target: Any | None = None,
     ):
         self.predlojka_bot = predlojka_bot
         self.bank_bot = bank_bot
@@ -23,6 +26,9 @@ class AppContext:
         self.config = config
         self.tg_adapter = tg_adapter
         self.admin_id = admin_id
+        self.ai_service = ai_service
+        self.post_publisher = post_publisher
+        self.telegram_admin_target = telegram_admin_target
         self.logger_factory = self._make_logger_factory()
 
 

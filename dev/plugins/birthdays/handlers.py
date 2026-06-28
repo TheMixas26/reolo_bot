@@ -1,5 +1,4 @@
 from analytics.stats import log_command_usage, log_event
-from config import chat_mishas_den
 from varibles.dialogue_loader import TEXT
 from .service import send_personal_birthday_notifications, add_birthday, add_birthday_by_username, send_daily_birthdays, get_user_birthday, change_personal_notify
 
@@ -47,7 +46,7 @@ def register_handlers(context):
                 return
             username = parts[1].lstrip('@')
             date_str = parts[2]
-            chat_id = chat_mishas_den
+            chat_id = context.config.chat_mishas_den
             ok, name = add_birthday_by_username(context, username, date_str, chat_id)
             if ok:
                 predlojka_telegram_adapter.reply_to(message, f"День рождения для {name} добавлен!")

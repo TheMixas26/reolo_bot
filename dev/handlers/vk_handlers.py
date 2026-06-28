@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import config as app_config
 import logging
 import time
 
-from ai.ai_module import stream_ai
 from analytics.stats import log_event
-from handlers.predlojka_handlers import submit_external_post
+from plugins.predlojka.handlers import submit_external_post
 from posting.runtime import vk_adapter
 from posting.services import PostParser
 from utils.utils import thx_for_message
@@ -32,21 +30,11 @@ def _send_vk_message(peer_id: int, text: str, *, ignore_reaction: bool) -> None:
     vk_adapter.send_message(peer_id, text)
 
 
-def _handle_vk_ai_request(peer_id: int, from_id: int, author_name: str, prompt_text: str, *, ignore_reaction: bool) -> None:
-    loop = None
+def _handle_vk_ai_request(context, peer_id: int, from_id: int, author_name: str, prompt_text: str, *, ignore_reaction: bool) -> None:
     log_event("ai_requested", bot="predlojka", user_id=from_id, chat_id=peer_id, metadata={"source_platform": "vk"})
 
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        async def _get_ai_response() -> str:
-            full_response = ""
-            async for chunk in stream_ai(prompt_text, author_name):
-                full_response = chunk
-            return full_response
-
-        full_text = loop.run_until_complete(_get_ai_response())
+        full_text = context.ai_service.ask_ai(prompt_text, author_name)
         _send_vk_message(peer_id, full_text, ignore_reaction=ignore_reaction)
         log_event("ai_completed", bot="predlojka", user_id=from_id, chat_id=peer_id, metadata={"source_platform": "vk"})
     except Exception as error:
@@ -59,15 +47,16 @@ def _handle_vk_ai_request(peer_id: int, from_id: int, author_name: str, prompt_t
             metadata={"source_platform": "vk", "error": str(error)[:300]},
         )
         _send_vk_message(peer_id, "Извините, что-то пошло не так... Попробуй ещё раз позже (^_^;)", ignore_reaction=ignore_reaction)
-    finally:
-        if loop is not None:
-            loop.close()
 
 
-def run_vk_listener() -> None:
+def run_vk_listener(context=None) -> None:
     if vk_adapter is None:
         logger.info("VK listener skipped: adapter is not configured.")
         return
+    if context is None:
+        from main import context as app_context
+
+        context = app_context
 
     logger.info("VK listener started.")
 
@@ -106,6 +95,7 @@ def run_vk_listener() -> None:
 
                 if parsed.wants_ai:
                     _handle_vk_ai_request(
+                        context,
                         peer_id,
                         from_id,
                         author_name,
