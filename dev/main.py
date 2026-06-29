@@ -2,6 +2,7 @@
 
 from analytics.stats import log_event
 import config as cfg
+from varibles.dialogue_loader import load_texts
 from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, bank_handlers, vk_handlers
 from handlers.card_handlers import callbacks as card_callbacks
 from handlers.card_handlers import commands as card_commands
@@ -21,6 +22,7 @@ from plugins.predlojka import PredlojkaPlugin
 from plugins.birthdays import BirthdaysPlugin
 from plugins.weather import WeatherPlugin
 from plugins.ai import AIPlugin, AIService
+from plugins.admin_utils import AdminUtilsPlugin
 
 try:
     from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
@@ -68,11 +70,18 @@ kochegar = context.logger_factory("core", persona="Кочегар")
 varya = context.logger_factory("predlojka", persona="Варя")
 
 
-PredlojkaPlugin.setup(context)
-BirthdaysPlugin.setup(context)
-WeatherPlugin.setup(context)
-AIPlugin.setup(context)
+enabled_plugins = [
+    PredlojkaPlugin,
+    BirthdaysPlugin,
+    WeatherPlugin,
+    AIPlugin,
+    AdminUtilsPlugin,
+]
 
+load_texts(enabled_plugins)
+
+for plugin in enabled_plugins:
+    plugin.setup(context)
 
 
 

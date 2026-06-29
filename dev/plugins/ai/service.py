@@ -9,12 +9,6 @@ from yandex_ai_studio_sdk import AIStudio
 
 from varibles.dialogue_loader import TEXT
 
-SYSTEM_PROMPT_1 = TEXT("SYSTEM_PROMPT", "1")
-SYSTEM_PROMPT_2 = TEXT("SYSTEM_PROMPT", "2")
-SYSTEM_PROMPT_podval1 = TEXT("SYSTEM_PROMPT", "podval_1")
-SYSTEM_PROMPT_podval2 = TEXT("SYSTEM_PROMPT", "podval_2")
-ADDITIONAL_TEMPLATE = TEXT("SYSTEM_PROMPT", "ADDITIONAL_TEMPLATE")
-
 
 def get_fallback_message() -> str:
     return TEXT("SYSTEM_PROMPT", "fallback_variants")
@@ -25,9 +19,15 @@ def clean_ai_tag(text: str) -> str:
 
 
 def build_system_prompt(name: str) -> str:
-    additional_text = ADDITIONAL_TEMPLATE.format(name=name)
-    basement_prompt = SYSTEM_PROMPT_podval1 if random.random() < 0.3 else SYSTEM_PROMPT_podval2
-    return f"{SYSTEM_PROMPT_1}\n\n{basement_prompt}\n\n{SYSTEM_PROMPT_2}\n\n{additional_text}"
+    additional_text = TEXT("SYSTEM_PROMPT", "ADDITIONAL_TEMPLATE", name=name)
+    basement_key = "podval_1" if random.random() < 0.3 else "podval_2"
+    basement_prompt = TEXT("SYSTEM_PROMPT", basement_key)
+    return (
+        f"{TEXT('SYSTEM_PROMPT', '1')}\n\n"
+        f"{basement_prompt}\n\n"
+        f"{TEXT('SYSTEM_PROMPT', '2')}\n\n"
+        f"{additional_text}"
+    )
 
 
 class AIService:

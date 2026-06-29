@@ -1,12 +1,8 @@
-from config import predlojka_bot, admin, channel, bank_bot, rpg_bot
-from telebot import types
+from config import predlojka_bot, admin
 from bank import edit_currency_info
-from utils.utils import get_commands_for_set, backupDB
 from database.scheduled_posts_db import list_scheduled_posts
-from database.sqlite_db import get_all_users
-from analytics.stats import log_command_usage, log_event
+from analytics.stats import log_command_usage
 from posting.runtime import predlojka_telegram_adapter
-import subprocess
 from random import choice
 from varibles.dialogue_loader import TEXT
 import logging
@@ -72,126 +68,5 @@ def editing_currency2(message):
         edit_currency_info(message, a, b)
     except Exception:
         predlojka_telegram_adapter.reply_to(message, "Извините, у меня тут не сраслось что-то...")
-
-
-@predlojka_bot.message_handler(commands=['setcmd'])
-def set_commands(message=None):
-    if message and message.from_user.id != admin:
-        return
-    
-    scope = types.BotCommandScopeChat(admin)
-
-    predlojka_bot.set_my_commands(get_commands_for_set("predlojka"))
-    predlojka_bot.set_my_commands(
-        get_commands_for_set("predlojka", include_admin=True),
-        scope=scope
-    )
-    bank_bot.set_my_commands(get_commands_for_set("bank"))
-    rpg_bot.set_my_commands(get_commands_for_set("rpg"))
-    rpg_bot.set_my_commands(
-        get_commands_for_set("rpg", include_admin=True),
-        scope=scope,
-    )
-
-    if message:
-        log_command_usage("predlojka", "setcmd", message)
-    log_event("commands_synced", bot="system", metadata={"triggered_by": message.from_user.id if message else "scheduler"})
-
-    if message:
-        predlojka_telegram_adapter.reply_to(message, TEXT('setcmd_successfully'))
-
-
-@predlojka_bot.message_handler(commands=['fake_post'])
-def handle_fake_post(message):
-    if message.from_user.id != admin:
-        return
-    log_command_usage("predlojka", "fake_post", message)
-
-    if message.reply_to_message:
-        try:
-            caption = message.reply_to_message.caption or message.reply_to_message.text or ""
-            if caption:
-                predlojka_telegram_adapter.copy_message(channel, message.chat.id, message.reply_to_message.message_id, caption=caption)
-            else:
-                predlojka_telegram_adapter.copy_message(channel, message.chat.id, message.reply_to_message.message_id)
-            predlojka_telegram_adapter.reply_to(message, TEXT("fakepost_successfully"))
-            log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "reply_copy"})
-            return
-        except Exception as e:
-            predlojka_telegram_adapter.reply_to(message, f"{TEXT("err", "message_forward")}{e}")
-            return
-
-    predlojka_telegram_adapter.reply_to(message, TEXT("fakepost_start"), parse_mode="MarkdownV2")
-    predlojka_bot.register_next_step_handler(message, handle_fake_post2)
-
-def handle_fake_post2(message):
-    if message.from_user.id != admin:
-        return
-    try:
-        predlojka_telegram_adapter.send_message(channel, message.text)
-        predlojka_telegram_adapter.send_message(message.chat.id, TEXT("fakepost_done"))
-        log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "text"})
-    except Exception as e:
-        predlojka_telegram_adapter.send_message(message.chat.id, f"(╥﹏╥) Ошибка при отправке поста: {e}")
-
-
-
-@predlojka_bot.message_handler(commands=['stop_bot'])
-def stop_bot(message):
-    if message.from_user.id != admin:
-        return
-    log_command_usage("predlojka", "stop_bot", message)
-    predlojka_telegram_adapter.reply_to(message, TEXT("stop_bot"))
-    with open('doc/shoot-at-the-server-room-during-the-evacuation.png', 'rb') as photo:
-        predlojka_telegram_adapter.send_photo(message.chat.id, photo)
-    SystemExit("Бот остановлен администратором")
-
-
-@predlojka_bot.message_handler(commands=['update_bot'])
-def update_bot(message):
-    if message.from_user.id != admin:
-        return
-    log_command_usage("predlojka", "update_bot", message)
-    predlojka_telegram_adapter.reply_to(message, TEXT('update_bot'))
-    subprocess.run(['git', 'pull'])
-    SystemExit("Бот перезапущен администратором")
-
-
-@predlojka_bot.message_handler(commands=['broadcast'])
-def public_notify_command(message):
-    if message.from_user.id != admin:
-        return
-    log_command_usage("predlojka", "broadcast", message)
-    predlojka_telegram_adapter.reply_to(message, TEXT("broadcast_start"))
-    predlojka_bot.register_next_step_handler(message, handle_public_notify)
-
-
-def handle_public_notify(message):
-    if message.from_user.id != admin:
-        return
-    try:
-        users = get_all_users()
-        sent_count = 0
-        for user in users:
-            try:
-                predlojka_telegram_adapter.send_message(user['user_id'], message.text)
-                sent_count += 1
-            except Exception as e:
-                logger.error(f"Ошибка при отправке сообщения пользователю {user['user_id']}: {e}")
-        log_event("broadcast_completed", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"sent_count": sent_count})
-        predlojka_telegram_adapter.reply_to(message, TEXT("broadcast_done"))
-    except Exception as e:
-        predlojka_telegram_adapter.reply_to(message, f"(╥﹏╥) Ошибка при рассылке: {e}")
-
-
-
-@predlojka_bot.message_handler(commands=['send_actual_db'])
-def send_actual_db(message):
-    if message.from_user.id != admin:
-        return
-    log_command_usage("predlojka", "send_actual_db", message)
-    backupDB()
-    log_event("backup_requested", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
-    predlojka_telegram_adapter.reply_to(message, TEXT('backup_successfully_send'))
 
 
