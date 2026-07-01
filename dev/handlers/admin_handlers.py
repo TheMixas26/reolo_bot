@@ -1,13 +1,12 @@
 from config import predlojka_bot, admin
-from bank import edit_currency_info
 from database.scheduled_posts_db import list_scheduled_posts
 from analytics.stats import log_command_usage
 from posting.runtime import predlojka_telegram_adapter
-from random import choice
-from varibles.dialogue_loader import TEXT
 import logging
 
 logger = logging.getLogger(__name__)
+
+
 
 def _preview_scheduled_payload(payload: dict, content_type: str) -> str:
     if content_type == "album":
@@ -49,24 +48,4 @@ def show_scheduled_posts(message):
         )
 
     predlojka_telegram_adapter.reply_to(message, "\n".join(lines), parse_mode="Markdown")
-
-
-@predlojka_bot.message_handler(commands=['edit_currency'])
-def editing_currency(message):
-    log_command_usage("predlojka", "edit_currency", message)
-    if message.chat.id == admin:
-        predlojka_telegram_adapter.reply_to(message, TEXT("answer_for_edit_currency"))
-        predlojka_bot.register_next_step_handler(message, editing_currency2)
-    else:
-        predlojka_telegram_adapter.reply_to(message, TEXT("not_an_admin"))
-
-def editing_currency2(message):
-    try:
-        purumpurum = message.text.split(",")
-        a = int(purumpurum[0])
-        b = int(purumpurum[1])
-        edit_currency_info(message, a, b)
-    except Exception:
-        predlojka_telegram_adapter.reply_to(message, "Извините, у меня тут не сраслось что-то...")
-
 

@@ -22,7 +22,8 @@ def upsert_birthday(user_id: int, name: str, day: int, month: int, year: int, us
 
 def get_all_birthdays() -> list[dict]:
     """Возвращает список всех записей о днях рождения пользователей с их данными (user_id, name, username, day, month, year, personal_notify)"""
-    rows = _conn.execute("SELECT user_id, name, username, day, month, year, personal_notify FROM birthdays").fetchall()
+    with _DB_LOCK:
+        rows = _conn.execute("SELECT user_id, name, username, day, month, year, personal_notify FROM birthdays").fetchall()
     return [dict(row) for row in rows]
 
 
@@ -35,10 +36,11 @@ def update_birthday_name(user_id: int, name: str) -> None:
 
 def get_birthday(user_id: int) -> dict | None:
     """Возвращает запись о дне рождения пользователя с его данными (user_id, name, username, day, month, year, personal_notify). Если пользователь не найден, возвращает None"""
-    row = _conn.execute(
-        "SELECT user_id, name, username, day, month, year, personal_notify FROM birthdays WHERE user_id = ?",
-        (user_id,),
-    ).fetchone()
+    with _DB_LOCK:
+        row = _conn.execute(
+            "SELECT user_id, name, username, day, month, year, personal_notify FROM birthdays WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
     return dict(row) if row else None
 
 

@@ -1,10 +1,10 @@
 import sqlite3
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 
 
 DB_PATH = Path("dev/database/bot.sqlite3")
-_DB_LOCK = Lock()
+_DB_LOCK = RLock()
 
 def _get_connection() -> sqlite3.Connection:
     """Создает папку для базы данных, если ее нет, и возвращает соединение с базой данных"""

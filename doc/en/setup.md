@@ -4,7 +4,8 @@
 
 - Python `3.14+`
 - Telegram bot tokens for the needed bots
-- keys for Yandex Cloud, if `#ai` is used
+- Yandex Cloud keys, if `#ai` is used
+- VK token, if VK publishing is needed
 
 Installing dependencies:
 
@@ -21,7 +22,7 @@ This is important for two reasons:
 - `dev/main.py` imports `config` as a module from the `dev` directory;
 - part of the paths in the code are specified relative to the repository root.
 
-Therefore, to run the project, you should do it exactly this way:
+Therefore, run the project this way:
 
 ```bash
 python dev/main.py
@@ -31,7 +32,7 @@ Running from the `dev/` directory may lead to incorrect relative paths.
 
 ## Where to Change Public Parameters
 
-For public project settings, there is now a separate file:
+For public project settings, there is a separate file:
 
 ```text
 dev/settings.py
@@ -43,15 +44,16 @@ It includes:
 - username of the card game bot;
 - display names of currencies;
 - commission for bank transfers;
+- calendar names;
 - other branding parameters that should not be considered secrets.
 
 ## Example of `dev/config.py`
 
 ```python
 import telebot
-from utils.imperial_сalender import ImperialCalendar
 
 DEBUG_MODE = True
+HIBERNATION = False
 
 BANK_TOKEN = ""
 RPG_TOKEN = ""
@@ -72,22 +74,30 @@ predlojka_bot = telebot.TeleBot(PREDLOJKA_TOKEN)
 bank_bot = telebot.TeleBot(BANK_TOKEN)
 rpg_bot = telebot.TeleBot(RPG_TOKEN)
 
-calendar = ImperialCalendar("utils/imperial_date_generator.js")
-
 CATALOG_ID = "{yandex_cloud_catalog_id}"
 SECRET_KEY = "{yandex_cloud_api_key}"
+
+# Optional: VK publishing
+VK_TOKEN = ""
+VK_OWNER_ID = None
+VK_GROUP_ID = None
+VK_API_VERSION = "5.199"
 ```
 
 ## What is Configured in `config.py`
 
 - `DEBUG_MODE` — launch mode for the test environment;
+- `HIBERNATION` — restricted mode for the suggestion bot;
 - `PREDLOJKA_TOKEN`, `BANK_TOKEN`, `RPG_TOKEN` — Telegram bot tokens;
 - `channel`, `channel_red`, `chat_mishas_den`, `backup_chat` — channel and chat IDs;
 - `admin` — Telegram ID of the administrator;
 - `location` — coordinates for the weather forecast;
-- `CATALOG_ID` and `SECRET_KEY` — YandexGPT settings.
+- `CATALOG_ID` and `SECRET_KEY` — YandexGPT settings;
+- `VK_TOKEN`, `VK_OWNER_ID`, `VK_GROUP_ID`, `VK_API_VERSION` — optional VK settings.
 
-The transfer commission is now set in `dev/settings.py` through `BANK_TRANSFER_COMMISSION`.
+The transfer commission is set in `dev/settings.py` through `BANK_TRANSFER_COMMISSION`.
+
+The imperial calendar is created inside `dev/plugins/calendar/service.py` and reads JavaScript rules from `dev/utils/imperial_date_generator.js`.
 
 ## Launch
 
@@ -97,22 +107,33 @@ From the repository root:
 python dev/main.py
 ```
 
-When starting:
+On startup:
 
-- the background task scheduler is launched;
-- the main proposal bot is started;
-- the RPG bot is started;
-- the bank bot is started only if `DEBUG_MODE = False`.
+- `bot_errors.log` is recreated;
+- plugin texts are loaded;
+- handlers and background jobs are registered;
+- tests are run with `python -m pytest tests/ -v`;
+- if tests pass, the scheduler starts;
+- the main bot, RPG bot and bank bot start;
+- the VK listener starts if the VK adapter is configured.
+
+If tests fail, `dev/main.py` exits and bots are not started.
 
 ## Database
 
-The main database is created automatically at the path:
+The main database is created automatically at:
 
 ```text
 dev/database/bot.sqlite3
 ```
 
-Tables are created in `database/sqlite_db.py` on the first run.
+Tables are created in `database/sqlite_db.py` on first module import.
+
+Scheduled posts and drafts are stored separately:
+
+```text
+dev/database/scheduled_posts.json
+```
 
 ## Logs
 
@@ -122,4 +143,4 @@ Errors and system output are written to:
 bot_errors.log
 ```
 
-The file is recreated when `dev/main.py` is started.
+The file is recreated when `dev/main.py` starts.

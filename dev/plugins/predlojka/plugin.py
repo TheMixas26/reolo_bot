@@ -1,7 +1,12 @@
-from .handlers import publish_due_scheduled_posts, register_handlers
+from .handlers import register_handlers
+from .jobs import publish_due_scheduled_posts
 
 
 class PredlojkaPlugin:
+    @staticmethod
+    def register_handlers(context):
+        register_handlers(context)
+
     @staticmethod
     def register_jobs(context):
         if context.scheduler.get_job("publish_scheduled_posts") is not None:
@@ -20,5 +25,5 @@ class PredlojkaPlugin:
     def setup(context):
         logger = context.logger_factory("predlojka", persona="Варя")
         logger.say("Плагин предложки подключён.")
-        register_handlers(context)
         PredlojkaPlugin.register_jobs(context)
+        PredlojkaPlugin.register_handlers(context)

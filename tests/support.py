@@ -56,7 +56,7 @@ class TextCall:
 
 
 def iter_python_files() -> list[Path]:
-    ignored_parts = {"__pycache__", ".venv", "site-packages"}
+    ignored_parts = {"__pycache__", ".venv", "site-packages", "plugin_template"}
     return sorted(
         path
         for path in DEV_ROOT.rglob("*.py")

@@ -1,9 +1,8 @@
-from config import predlojka_bot
 from analytics.stats import log_event
-from database.sqlite_db import get_all_users, get_user_achievements, grant_achievement, get_achievement_by_code
+from database.sqlite_db import get_all_users
+from .db import get_user_achievements, grant_achievement, get_achievement_by_code
 
-
-def check_achievements():
+def check_achievements(context):
     """Проверяет, не заслужил ли кто-то новое достижение, и если да, то выдаёт его и отправляет уведомление"""
     users = get_all_users()
     first_post_achievement = get_achievement_by_code("first_post")
@@ -19,7 +18,7 @@ def check_achievements():
 
         if first_post_achievement["code"] not in user_achievements_codes and post_count >= 1:
             grant_achievement(user_id, first_post_achievement["code"])
-            predlojka_bot.send_message(
+            context.predlojka_bot.send_message(
                 user_id,
                 f"🎉 Поздравляю вас! Вы получили новое достижение: {first_post_achievement['name']} - {first_post_achievement['description']}"
             )

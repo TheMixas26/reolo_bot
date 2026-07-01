@@ -3,29 +3,32 @@
 from analytics.stats import log_event
 import config as cfg
 from varibles.dialogue_loader import load_texts
-from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, bank_handlers, vk_handlers
+from handlers import user_handlers, admin_handlers, vk_handlers
 from handlers.card_handlers import callbacks as card_callbacks
 from handlers.card_handlers import commands as card_commands
 from posting.runtime import vk_adapter
-from utils.schedulers import scheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 import subprocess
 
 import logging
 from threading import Thread
 import time
-from utils.schedulers import start_scheduler
 import sys
-from posting.runtime import post_publisher, predlojka_telegram_adapter, telegram_admin_target
+from posting.runtime import post_publisher, predlojka_telegram_adapter, telegram_admin_target, bank_telegram_adapter
 
 from core.context import AppContext
+from core.core_plugin import CorePlugin
 from plugins.predlojka import PredlojkaPlugin
 from plugins.birthdays import BirthdaysPlugin
 from plugins.weather import WeatherPlugin
 from plugins.ai import AIPlugin, AIService
 from plugins.admin_utils import AdminUtilsPlugin
+from plugins.bank import BankPlugin
+from plugins.achievements import AchievementsPlugin
+from plugins.calendar import CalendarPlugin
 
 try:
-    from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
+    from config import predlojka_bot, admin, channel, chat_mishas_den, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
 except Exception as e:
     print(f"[КОЧЕГАР] - Ё-моё, настройки не грузятся! {e}")
     exit(1)
@@ -49,6 +52,7 @@ ai_service = AIService(
     logger=logger.getChild("ai"),
 )
 
+scheduler = BackgroundScheduler()
 
 
 context = AppContext(
@@ -59,7 +63,10 @@ context = AppContext(
     logger=logger,
     config=cfg,
     tg_adapter=predlojka_telegram_adapter,
+    bank_adapter=bank_telegram_adapter,
     admin_id=admin,
+    chat_mishas_den=chat_mishas_den,
+    channel=channel,
     ai_service=ai_service,
     post_publisher=post_publisher,
     telegram_admin_target=telegram_admin_target,
@@ -76,10 +83,14 @@ enabled_plugins = [
     WeatherPlugin,
     AIPlugin,
     AdminUtilsPlugin,
+    BankPlugin,
+    AchievementsPlugin,
+    CalendarPlugin,
 ]
 
 load_texts(enabled_plugins)
 
+CorePlugin.setup(context)
 for plugin in enabled_plugins:
     plugin.setup(context)
 
@@ -155,7 +166,7 @@ if __name__ == "__main__":
         sys.exit(1)
     
     # ========== ТЕСТЫ ПРОШЛИ - ЗАПУСКАЕМ БОТОВ ==========
-    start_scheduler()
+    scheduler.start()
 
     kochegar.say("🎉 УРА! ТЕСТЫ ПРОШЛИ! ЗАПУСКАЮ ВСЕХ БОТОВ!")
     
@@ -182,15 +193,11 @@ if __name__ == "__main__":
     else:
         kochegar.say("⚠️ VK адаптер не подключён", "warn")
     
-    # Банк (только не в DEBUG режиме)
-    if DEBUG_MODE:
-        kochegar.say("🔧 Отладка: БАНК НЕ ЗАПУЩЕН (в DEBUG режиме он отдыхает)", "warn")
-    else:
-        t3 = Thread(target=run_bot, args=(bank_bot, "БАНК", "bank"), daemon=True)
-        t3.start()
-        threads.append(t3)
-        kochegar.say("💰 Банковский бот запущен")
-    
+    t3 = Thread(target=run_bot, args=(bank_bot, "БАНК", "bank"), daemon=True)
+    t3.start()
+    threads.append(t3)
+    kochegar.say("💰 Банковский бот запущен")
+
     kochegar.say("🎪 ВСЁ! Бот в строю! Могу пойти чайку попить...")
     kochegar.say("☕ Кочегар уходит в тень, но следит... Всегда следит.")
     

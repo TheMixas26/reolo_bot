@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from analytics.stats import log_command_usage, log_event
 from config import admin, rpg_bot
+from plugins.bank.db import get_balance
 from database.sqlite_db import (
     add_card,
     create_card_event,
     create_user_if_missing,
     get_all_cards,
     get_all_packs,
-    get_balance,
     get_card_events,
     get_inventory,
     get_pack_by_name,

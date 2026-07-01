@@ -8,17 +8,18 @@ The list of commands is collected from `dev/varibles/command_list.txt`.
 - `/help` — help and brief instructions
 - `/changelog` — changelog
 - `/battle` — link to the card bot
-- `/personal_notifications` — enable or disable personal notifications about birthdays
+- `/personal_notifications` — enable or disable personal birthday notifications
 - `/add_birthday` — add your own birthday
 - `/me` — user profile, achievements and balance
 - `/achievements` — list of achievements
 - `/today` — imperial date for today
-- `/nearest_event` — nearest empire holidays
-- `/all_events` — all empire holidays
+- `/nearest_event` — nearest calendar holidays
+- `/all_events` — all imperial calendar holidays
 
 ## Main bot: admin commands
 
 - `/send_daily` — force send daily notifications to all users
+- `/send_weather` — force send the weather forecast
 - `/send_personal_daily` — force send personal daily notifications
 - `/add_birthday_by_username` — add birthday for a user
 - `/setcmd` — update command list for bots
@@ -29,8 +30,11 @@ The list of commands is collected from `dev/varibles/command_list.txt`.
 - `/add_conditions` — update achievement conditions
 - `/broadcast` — broadcast message to all users
 - `/fake_post` — publish post on behalf of subscriber
-- `/send_actual_db` — send actual database backup
+- `/scheduled_posts` — show drafts and scheduled posts
+- `/drafts` — alias for `/scheduled_posts`
+- `/send_actual_db` — send current database backup
 - `/stop_bot` — stop the bot
+- `/update_bot` — update the bot to the latest GitHub version
 - `/send_smth` — test service sending
 
 ## Bank bot
@@ -46,19 +50,19 @@ The list of commands is collected from `dev/varibles/command_list.txt`.
 - `/packs` — show available packs
 - `/wallet` — show card balance
 - `/events` — show card events
-- `/inventory` — open inventory of cards
+- `/inventory` — open card inventory
 - `/cards` — view card catalog
-- `/duel` — challenge a player to a duel
+- `/duel` — challenge another player to a duel
 - `/team_battle` — start a team battle
 - `/cancel` — cancel the current action or battle
 
 ## Card bot: admin commands
 
-- `/cg_events_admin` — list of all card events
+- `/cg_events_admin` — list all card events
 - `/cg_create_event` — create a card event
 - `/cg_close_event` — close a card event
-- `/cg_reward_event` — award a participant of an event
-- `/cg_packs_admin` — list of packs for administrators
+- `/cg_reward_event` — award an event participant
+- `/cg_packs_admin` — list packs for administrators
 - `/cg_add_pack` — create a new pack
 - `/cg_edit_pack` — edit pack parameters
 - `/cg_add_card` — add a new card

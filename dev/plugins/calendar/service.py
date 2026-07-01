@@ -1,7 +1,7 @@
 import json
 import threading
 from quickjs import Context
-from config import predlojka_bot, channel, chat_mishas_den
+from config import predlojka_bot, chat_mishas_den
 
 class ImperialCalendar:
     def __init__(self, js_path: str):
@@ -121,14 +121,3 @@ class ImperialCalendar:
 
 
 calendar = ImperialCalendar('dev/utils/imperial_date_generator.js')
-
-
-def check_imperial_events():
-    today_info = calendar.today()
-    event_today = today_info.get("event")
-    if event_today:
-        message = f"Сегодня {today_info['day']} {today_info['month']} {today_info['year']} по Имперскому календарю! Праздник: {event_today} 🎉"
-    else:
-        message = f"Сегодня {today_info['day']} {today_info['month']} {today_info['year']} по Имперскому календарю. Сегодня нет праздников."
-    
-    predlojka_bot.send_message(chat_mishas_den, message)

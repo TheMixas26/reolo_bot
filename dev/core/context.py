@@ -13,7 +13,10 @@ class AppContext:
         logger: Logger,
         config: Any,
         tg_adapter,
+        bank_adapter,
         admin_id: int,
+        chat_mishas_den: int,
+        channel: int,
         ai_service: Any | None = None,
         post_publisher: Any | None = None,
         telegram_admin_target: Any | None = None,
@@ -25,7 +28,10 @@ class AppContext:
         self.logger = logger
         self.config = config
         self.tg_adapter = tg_adapter
+        self.bank_adapter = bank_adapter
         self.admin_id = admin_id
+        self.chat_mishas_den = chat_mishas_den
+        self.channel = channel
         self.ai_service = ai_service
         self.post_publisher = post_publisher
         self.telegram_admin_target = telegram_admin_target

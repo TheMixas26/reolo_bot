@@ -219,3 +219,4 @@ def _build_service_text(content: SubmissionContent, user_name: str) -> str:
         parts.append("🏷️ " + " ".join(content.public_tags))
     parts.append("🤫 Аноним" if content.is_anonymous else f"👤 {user_name}")
     return "\n\n".join(parts).strip()
+

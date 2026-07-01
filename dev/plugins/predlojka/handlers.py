@@ -10,7 +10,7 @@ from telebot import types
 from varibles.dialogue_loader import TEXT
 
 from analytics.stats import log_event
-from database.scheduled_posts_db import create_scheduled_post, get_due_scheduled_posts, remove_scheduled_post
+from database.scheduled_posts_db import create_scheduled_post
 from database.sqlite_db import add_to_post_counter
 from posting.models import Post
 from posting.services import PostFormatter
@@ -51,7 +51,6 @@ pending_question_answers: dict[int, dict] = {}
 direct_message_queue: dict[int, dict] = {}
 pending_direct_message_answers: dict[int, dict] = {}
 pending_scheduled_publications: dict[int, dict] = {}
-scheduled_publish_lock = threading.Lock()
 
 predlojka_telegram_adapter = None
 telegram_adapter = None
@@ -1291,41 +1290,9 @@ def close_dm_message(call):
 
 
 def publish_due_scheduled_posts() -> None:
-    if not scheduled_publish_lock.acquire(blocking=False):
-        return
+    from .jobs import publish_due_scheduled_posts as run_job
 
-    try:
-        due_posts = get_due_scheduled_posts()
-        for record in due_posts:
-            try:
-                if record["content_type"] == "album":
-                    _publish_album_payload(record["payload"])
-                else:
-                    _publish_payload(record["payload"])
-                remove_scheduled_post(record["doc_id"])
-                log_event(
-                    "scheduled_post_published",
-                    bot="predlojka",
-                    metadata={
-                        "schedule_id": record["doc_id"],
-                        "content_type": record["content_type"],
-                        "source_user_id": record["source_user_id"],
-                    },
-                )
-            except Exception as error:
-                logger.error(f"Не удалось опубликовать отложенную запись {record['doc_id']}: {error}")
-                try:
-                    predlojka_telegram_adapter.send_message(
-                        admin,
-                        "Не удалось опубликовать отложенную запись.\n"
-                        f"ID задачи: {record['doc_id']}\n"
-                        f"Тип: {record['content_type']}\n"
-                        f"Ошибка: {error}",
-                    )
-                except Exception as notify_error:
-                    logger.error(f"Не удалось отправить уведомление админу о сбое отложенной записи {record['doc_id']}: {notify_error}")
-    finally:
-        scheduled_publish_lock.release()
+    run_job()
 
 
 def submit_external_post(post: Post, *, acknowledge_callback=None) -> None:

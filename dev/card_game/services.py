@@ -5,7 +5,8 @@ from __future__ import annotations
 import random
 
 from card_game.catalog import RARITY_WEIGHTS, get_rarity_label
-from database.sqlite_db import add_to_inventory, get_balance, get_cards_by_category, get_pack_by_id, get_pack_names, set_balance
+from database.sqlite_db import add_to_inventory, get_cards_by_category, get_pack_by_id, get_pack_names
+from plugins.bank.db import get_balance, set_balance
 
 TEAM_SIZE = 5
 PACK_SIZE = 3

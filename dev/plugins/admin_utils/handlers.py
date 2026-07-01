@@ -97,6 +97,36 @@ def register_handlers(context):
     def initial_send_commands(message):
         set_commands(context, message)
 
+    def handle_send_personal_daily(message):
+        log_command_usage("predlojka", "send_smth", message)
+        if message.from_user.id != admin:
+            return
+        command_text = message.text.replace('/send_smth', '').strip()
+
+        try:
+            user_id_str, text_to_send = command_text.split('|', 1)  
+            user_id = int(user_id_str.strip())
+            text_to_send = text_to_send.strip()
+        except ValueError:
+            predlojka_telegram_adapter.reply_to(message, "Ошибка формата. Используйте: /send_smth ID|текст сообщения")
+            return
+        except Exception as e:
+            predlojka_telegram_adapter.reply_to(message, f"Произошла ошибка: {e}")
+            return
+
+        try:
+            predlojka_telegram_adapter.send_message(user_id, text_to_send)
+            predlojka_telegram_adapter.reply_to(
+                message,
+                f"Сообщение успешно отправлено получателю с ID {user_id}."
+            )
+        except Exception as e:
+        
+            predlojka_telegram_adapter.reply_to(
+                message,
+                f"Не удалось отправить сообщение получателю с ID {user_id}. Ошибка: {e}"
+            )
+
 
 
 
@@ -123,6 +153,11 @@ def register_handlers(context):
     bot.register_message_handler(
         send_actual_db,
         commands=['send_actual_db']
+    )
+
+    bot.register_message_handler(
+        handle_send_personal_daily,
+        commands=['send_smth']
     )
 
         

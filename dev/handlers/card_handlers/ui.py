@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from config import rpg_bot
-from database.sqlite_db import get_balance, get_inventory
+from database.sqlite_db import get_inventory
+from plugins.bank.db import get_balance
 from posting.runtime import rpg_telegram_adapter
 
 from card_game.formatters import (

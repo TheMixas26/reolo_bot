@@ -5,6 +5,7 @@
 - Python `3.14+`
 - Telegram bot tokens для нужных ботов
 - ключи Yandex Cloud, если используется `#ai`
+- VK token, если нужна публикация во VK
 
 Установка зависимостей:
 
@@ -31,7 +32,7 @@ python dev/main.py
 
 ## Где менять несекретные параметры
 
-Для публичных настроек проекта теперь есть отдельный файл:
+Для публичных настроек проекта есть отдельный файл:
 
 ```text
 dev/settings.py
@@ -43,15 +44,16 @@ dev/settings.py
 - username карточного бота;
 - отображаемые названия валюты;
 - комиссия банковых переводов;
+- названия календаря;
 - другие параметры брендинга, которые не должны считаться секретами.
 
 ## Пример `dev/config.py`
 
 ```python
 import telebot
-from utils.imperial_сalender import ImperialCalendar
 
 DEBUG_MODE = True
+HIBERNATION = False
 
 BANK_TOKEN = ""
 RPG_TOKEN = ""
@@ -72,22 +74,30 @@ predlojka_bot = telebot.TeleBot(PREDLOJKA_TOKEN)
 bank_bot = telebot.TeleBot(BANK_TOKEN)
 rpg_bot = telebot.TeleBot(RPG_TOKEN)
 
-calendar = ImperialCalendar("utils/imperial_date_generator.js")
-
 CATALOG_ID = "{yandex_cloud_catalog_id}"
 SECRET_KEY = "{yandex_cloud_api_key}"
+
+# Опционально: публикация во VK
+VK_TOKEN = ""
+VK_OWNER_ID = None
+VK_GROUP_ID = None
+VK_API_VERSION = "5.199"
 ```
 
 ## Что настраивается в `config.py`
 
 - `DEBUG_MODE` — режим запуска для тестового окружения;
+- `HIBERNATION` — ограниченный режим работы предложки;
 - `PREDLOJKA_TOKEN`, `BANK_TOKEN`, `RPG_TOKEN` — токены Telegram-ботов;
 - `channel`, `channel_red`, `chat_mishas_den`, `backup_chat` — ID каналов и чатов;
 - `admin` — Telegram ID администратора;
 - `location` — координаты для прогноза погоды;
-- `CATALOG_ID` и `SECRET_KEY` — настройки YandexGPT.
+- `CATALOG_ID` и `SECRET_KEY` — настройки YandexGPT;
+- `VK_TOKEN`, `VK_OWNER_ID`, `VK_GROUP_ID`, `VK_API_VERSION` — опциональные настройки VK.
 
-Комиссия переводов теперь задаётся в `dev/settings.py` через `BANK_TRANSFER_COMMISSION`.
+Комиссия переводов задаётся в `dev/settings.py` через `BANK_TRANSFER_COMMISSION`.
+
+Имперский календарь создаётся внутри `dev/plugins/calendar/service.py` и читает JavaScript-правила из `dev/utils/imperial_date_generator.js`.
 
 ## Запуск
 
@@ -99,10 +109,15 @@ python dev/main.py
 
 При старте:
 
-- поднимается планировщик фоновых задач;
-- запускается основной бот предложки;
-- запускается RPG-бот;
-- банковый бот запускается только если `DEBUG_MODE = False`.
+- пересоздаётся `bot_errors.log`;
+- загружаются тексты плагинов;
+- регистрируются обработчики и фоновые задачи;
+- запускаются тесты командой `python -m pytest tests/ -v`;
+- если тесты прошли, стартует планировщик;
+- запускаются основной бот, RPG-бот и банковый бот;
+- запускается VK-listener, если VK-адаптер настроен.
+
+Если тесты падают, `dev/main.py` завершает работу и боты не запускаются.
 
 ## База данных
 
@@ -112,7 +127,13 @@ python dev/main.py
 dev/database/bot.sqlite3
 ```
 
-Таблицы создаются в `database/sqlite_db.py` при первом запуске.
+Таблицы создаются в `database/sqlite_db.py` при первом импорте модуля.
+
+Отложенные публикации и черновики хранятся отдельно:
+
+```text
+dev/database/scheduled_posts.json
+```
 
 ## Логи
 
