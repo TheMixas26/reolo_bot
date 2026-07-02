@@ -1,4 +1,4 @@
-from dev.core.core_plugin.stats import log_command_usage
+from core.core_plugin.stats import log_command_usage
 from .jobs import send_weather
 from varibles.dialogue_loader import TEXT
 

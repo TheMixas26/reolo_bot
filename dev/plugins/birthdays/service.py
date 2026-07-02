@@ -1,5 +1,5 @@
 from config import predlojka_bot, chat_mishas_den, admin, channel
-from dev.core.core_plugin.stats import log_event
+from core.core_plugin.stats import log_event
 from .db import (
     upsert_birthday,
     get_all_birthdays as fetch_all_birthdays,

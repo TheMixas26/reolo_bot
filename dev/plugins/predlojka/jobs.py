@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 
-from dev.core.core_plugin.stats import log_event
+from core.core_plugin.stats import log_event
 from database.scheduled_posts_db import get_due_scheduled_posts, remove_scheduled_post
 
 from . import handlers

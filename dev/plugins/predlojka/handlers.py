@@ -9,13 +9,13 @@ import random
 from telebot import types
 from varibles.dialogue_loader import TEXT
 
-from dev.core.core_plugin.stats import log_event, log_command_usage
+from core.core_plugin.stats import log_event, log_command_usage
 from database.scheduled_posts_db import create_scheduled_post
 from database.sqlite_db import add_to_post_counter
 from posting.models import Post
 from posting.services import PostFormatter
 from plugins.ai.handlers import process_ai_message
-from plugins.predlojka import thx_for_message
+from .service import thx_for_message
 from database.scheduled_posts_db import list_scheduled_posts
 
 from . import service as predlojka_service

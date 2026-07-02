@@ -1,5 +1,5 @@
 from varibles.dialogue_loader import TEXT
-from dev.core.core_plugin.stats import log_command_usage
+from core.core_plugin.stats import log_command_usage
 
 
 def register_handlers(context):

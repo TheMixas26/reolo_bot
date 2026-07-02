@@ -1,9 +1,8 @@
 """Точка входа в бота, запускайте именно этот файл."""
 
-from dev.core.core_plugin.stats import log_event
+from core.core_plugin.stats import log_event
 import config as cfg
 from varibles.dialogue_loader import load_texts
-from posting.runtime import vk_adapter
 from apscheduler.schedulers.background import BackgroundScheduler
 import subprocess
 
@@ -16,7 +15,7 @@ from posting.runtime import post_publisher, predlojka_telegram_adapter, telegram
 from core.context import AppContext
 from core.core_plugin import CorePlugin
 from plugins.predlojka import PredlojkaPlugin
-from plugins.vk import VKPlugin
+# from plugins.vk import VKPlugin
 from plugins.birthdays import BirthdaysPlugin
 from plugins.weather import WeatherPlugin
 from plugins.ai import AIPlugin, AIService
@@ -64,7 +63,6 @@ context = AppContext(
     tg_adapter=predlojka_telegram_adapter,
     bank_adapter=bank_telegram_adapter,
     rpg_adapter=rpg_telegram_adapter,
-    vk_adapter=vk_adapter,
     admin_id=admin,
     chat_mishas_den=chat_mishas_den,
     channel=channel,
@@ -85,7 +83,7 @@ enabled_plugins = [
     BirthdaysPlugin,
     WeatherPlugin,
     AIPlugin,
-    VKPlugin,
+    # VKPlugin,
     AdminUtilsPlugin,
     BankPlugin,
     AchievementsPlugin,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from varibles.dialogue_loader import TEXT
 import time
-from dev.core.core_plugin.stats import log_event, log_command_usage
+from core.core_plugin.stats import log_event, log_command_usage
 from database.sqlite_db import create_user_if_missing
 from plugins.bank.db import get_balance
 from settings import RPG_BOT_NAME, RPG_BOT_USERNAME

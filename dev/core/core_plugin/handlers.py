@@ -1,6 +1,6 @@
 from varibles.dialogue_loader import TEXT
 from settings import PROJECT_NAME, render_text_template
-from dev.core.core_plugin.stats import log_command_usage, log_event
+from core.core_plugin.stats import log_command_usage, log_event
 from database.sqlite_db import user_exists, create_user_if_missing
 from .service import get_changelog
 

@@ -74,7 +74,10 @@ class VKAdapter(SocialAdapter):
         if not self.group_id:
             raise RuntimeError("VK_GROUP_ID не настроен")
 
-        server_info = self._call_api("groups.getLongPollServer", group_id=self.group_id)
+        server_info = self._call_api("groups.getLongPollServer", group_id=(self.group_id))
+        if not server_info:
+            raise RuntimeError(f"VK API вернул пустой ответ для group_id={(self.group_id)}. Проверьте права токена и ID группы.")
+        # Если вдруг ответ — список с одним элементом (редко), возьмите его
         server = server_info["server"]
         key = server_info["key"]
         ts = server_info["ts"]

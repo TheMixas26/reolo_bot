@@ -1,7 +1,7 @@
 from __future__ import annotations
 from telebot import types
 from .catalog import get_rarity_label, get_pack_name, RARITY_WEIGHTS
-from dev.core.core_plugin.stats import log_event
+from core.core_plugin.stats import log_event
 from dataclasses import dataclass, field
 from html import escape
 import random

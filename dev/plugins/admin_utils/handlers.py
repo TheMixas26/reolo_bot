@@ -2,7 +2,7 @@ from .jobs import backupDB
 from .service import set_commands
 from varibles.dialogue_loader import TEXT
 from telebot import types
-from dev.core.core_plugin.stats import log_command_usage, log_event
+from core.core_plugin.stats import log_command_usage, log_event
 import subprocess
 from database.sqlite_db import get_all_users
 

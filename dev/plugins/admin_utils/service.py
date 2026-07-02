@@ -1,5 +1,5 @@
 from settings import render_text_template
-from dev.core.core_plugin.stats import log_command_usage, log_event
+from core.core_plugin.stats import log_command_usage, log_event
 from varibles.dialogue_loader import TEXT
 from telebot import types
 from pathlib import Path

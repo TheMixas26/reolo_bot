@@ -15,7 +15,6 @@ class AppContext:
         tg_adapter,
         bank_adapter,
         rpg_adapter,
-        vk_adapter,
         admin_id: int,
         chat_mishas_den: int,
         channel: int,
@@ -34,7 +33,6 @@ class AppContext:
         self.tg_adapter = tg_adapter
         self.bank_adapter = bank_adapter
         self.rpg_adapter = rpg_adapter
-        self.vk_adapter = vk_adapter
         self.admin_id = admin_id
         self.chat_mishas_den = chat_mishas_den
         self.channel = channel

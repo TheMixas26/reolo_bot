@@ -1,10 +1,10 @@
 from __future__ import annotations
 from varibles.dialogue_loader import TEXT
-from dev.core.core_plugin.stats import log_event
+from core.core_plugin.stats import log_event
 from plugins.predlojka.handlers import submit_external_post
 from posting.services import PostParser
 from plugins.predlojka import thx_for_message
-
+from posting.runtime import vk_adapter
 
 def _acknowledge_vk_submission(vk_adapter, peer_id: int, author_name: str, *, is_question: bool) -> None:
     if vk_adapter is None:
@@ -37,8 +37,7 @@ def _handle_vk_ai_request(context, peer_id: int, from_id: int, author_name: str,
         _send_vk_message(context.vk_adapter, peer_id, "Извините, что-то пошло не так... Попробуй ещё раз позже (^_^;)", ignore_reaction=ignore_reaction)
 
 
-def run_vk_listener(context) -> None:
-    vk_adapter = context.vk_adapter
+def run_vk_listener(context=None) -> None:
     logger = context.logger
 
     if vk_adapter is None:

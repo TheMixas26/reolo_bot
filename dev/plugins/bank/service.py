@@ -3,7 +3,7 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
-from dev.core.core_plugin.stats import log_event
+from core.core_plugin.stats import log_event
 from config import bank_bot
 from varibles.dialogue_loader import TEXT
 from database.sqlite_db import user_exists

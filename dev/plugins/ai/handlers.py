@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dev.core.core_plugin.stats import log_event
+from core.core_plugin.stats import log_event
 from .service import get_fallback_message
 
 def _display_name(user) -> str:
