@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import logging, random, datetime, time
+import logging, random, time
 from dataclasses import dataclass
+from datetime import datetime
 
 from database.sqlite_db import create_user_if_missing, user_exists
 from posting.models import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin
