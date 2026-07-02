@@ -4,7 +4,7 @@ from pathlib import Path
 DIALOGS = {}
 
 DEV_DIR = Path(__file__).resolve().parents[1]
-CORE_TEXTS = DEV_DIR / "varibles" / "texts.json"
+CORE_TEXTS = DEV_DIR / "core" / "core_plugin" / "texts.json"
 PLUGINS_DIR = DEV_DIR / "plugins"
 
 
@@ -82,3 +82,9 @@ def TEXT(*keys, **kwargs):
 
 
 load_texts()
+
+
+if __name__ == "__main__":
+    load_texts()
+    with open("all_texts.json", "w", encoding="utf-8") as file:
+        json.dump(DIALOGS, file, ensure_ascii=False, indent=4)

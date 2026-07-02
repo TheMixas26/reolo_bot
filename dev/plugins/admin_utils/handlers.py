@@ -2,7 +2,7 @@ from .jobs import backupDB
 from .service import set_commands
 from varibles.dialogue_loader import TEXT
 from telebot import types
-from analytics.stats import log_command_usage, log_event
+from dev.core.core_plugin.stats import log_command_usage, log_event
 import subprocess
 from database.sqlite_db import get_all_users
 
@@ -24,14 +24,14 @@ def register_handlers(context):
                     predlojka_telegram_adapter.copy_message(context.channel, message.chat.id, message.reply_to_message.message_id, caption=caption)
                 else:
                     predlojka_telegram_adapter.copy_message(context.channel, message.chat.id, message.reply_to_message.message_id)
-                predlojka_telegram_adapter.reply_to(message, TEXT("fakepost_successfully"))
+                predlojka_telegram_adapter.reply_to(message, TEXT("fakepost", "successfully"))
                 log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "reply_copy"})
                 return
             except Exception as e:
                 predlojka_telegram_adapter.reply_to(message, f"{TEXT("err", "message_forward")}{e}")
                 return
 
-        predlojka_telegram_adapter.reply_to(message, TEXT("fakepost_start"), parse_mode="MarkdownV2")
+        predlojka_telegram_adapter.reply_to(message, TEXT("fakepost", "start"), parse_mode="MarkdownV2")
         bot.register_next_step_handler(message, handle_fake_post2(context))
 
     def handle_fake_post2(context, message):
@@ -39,7 +39,7 @@ def register_handlers(context):
             return
         try:
             predlojka_telegram_adapter.send_message(context.channel, message.text)
-            predlojka_telegram_adapter.send_message(message.chat.id, TEXT("fakepost_done"))
+            predlojka_telegram_adapter.send_message(message.chat.id, TEXT("fakepost", "done"))
             log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "text"})
         except Exception as e:
             predlojka_telegram_adapter.send_message(message.chat.id, f"(╥﹏╥) Ошибка при отправке поста: {e}")

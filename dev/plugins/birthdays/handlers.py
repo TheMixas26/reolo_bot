@@ -1,4 +1,4 @@
-from analytics.stats import log_command_usage, log_event
+from dev.core.core_plugin.stats import log_command_usage, log_event
 from varibles.dialogue_loader import TEXT
 from .service import send_personal_birthday_notifications, add_birthday, add_birthday_by_username, send_daily_birthdays, get_user_birthday, change_personal_notify
 

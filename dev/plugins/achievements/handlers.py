@@ -1,5 +1,5 @@
 from varibles.dialogue_loader import TEXT
-from analytics.stats import log_command_usage, log_event
+from dev.core.core_plugin.stats import log_command_usage, log_event
 from .db import get_all_achievements, add_achievement, grant_achievement, revoke_achievement, get_user_achievements, update_achievement
 from plugins.bank.db import get_balance
 

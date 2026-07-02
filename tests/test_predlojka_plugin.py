@@ -35,11 +35,11 @@ class PredlojkaPluginTests(unittest.TestCase):
             self.assertIs(handlers_module.plugin_context, context)
             self.assertIs(handlers_module.predlojka_telegram_adapter, context.tg_adapter)
             self.assertEqual(handlers_module.admin, context.admin_id)
-            self.assertEqual(len(bot.message_handlers), 2)
+            self.assertEqual(len(bot.message_handlers), 3)
             self.assertEqual(len(bot.callback_query_handlers), 10)
 
             handlers_module.register_handlers(context)
-            self.assertEqual(len(bot.message_handlers), 2)
+            self.assertEqual(len(bot.message_handlers), 3)
             self.assertEqual(len(bot.callback_query_handlers), 10)
 
     def test_submission_tags_are_parsed_as_control_and_public_tags(self):

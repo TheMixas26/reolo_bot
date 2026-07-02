@@ -120,4 +120,4 @@ class ImperialCalendar:
             """)
 
 
-calendar = ImperialCalendar('dev/utils/imperial_date_generator.js')
+calendar = ImperialCalendar('dev/plugins/calendar/imperial_date_generator.js')

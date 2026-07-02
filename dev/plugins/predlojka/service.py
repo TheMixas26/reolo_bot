@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import logging
-import time
+import logging, random, datetime, time
 from dataclasses import dataclass
 
 from database.sqlite_db import create_user_if_missing, user_exists
 from posting.models import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin
 from posting.platform_ids import to_storage_user_id
 from posting.services import PostParser
+from varibles.dialogue_loader import TEXT
+
 
 logger = logging.getLogger(__name__)
 
@@ -220,3 +221,46 @@ def _build_service_text(content: SubmissionContent, user_name: str) -> str:
     parts.append("🤫 Аноним" if content.is_anonymous else f"👤 {user_name}")
     return "\n\n".join(parts).strip()
 
+def _preview_scheduled_payload(payload: dict, content_type: str) -> str:
+    if content_type == "album":
+        media = payload.get("media") or []
+        first_caption = ""
+        if media:
+            first_caption = (media[0].get("caption") or "").strip()
+        snippet = first_caption or f"Альбом из {len(media)} элементов"
+    else:
+        snippet = (payload.get("publish_text") or "").strip()
+
+    snippet = snippet.replace("\n", " ")
+    if len(snippet) > 90:
+        snippet = snippet[:87] + "..."
+    return snippet or "(без текста)"
+
+
+def thx_for_message(user_name: str, mes_type: str) -> str:
+    FUN = random.random()
+
+    time = "day" if 6 <= datetime.now().hour < 23 else "night"
+
+    if mes_type == '!':
+        if FUN < 0.9:
+            return TEXT("thx", time, "variants_v", name=user_name)
+        elif FUN >= 0.98:
+            return TEXT("thx", time, "podval_variants_v", name=user_name)
+        else:
+            return TEXT("thx", time, "secret_variants_v", name=user_name)
+
+    elif mes_type == '?':
+        return TEXT("thx", time, "variants_q", name=user_name)
+
+    elif mes_type == 'event':
+        return TEXT("thx", time, "events_variants")
+
+    elif mes_type == 'report':
+        return TEXT("thx", time, "report_variants")
+
+    elif mes_type == 'message':
+        return TEXT("thx", time, "message_variants")
+
+    else:
+        return TEXT("thx", time, "variants_v", name=user_name)

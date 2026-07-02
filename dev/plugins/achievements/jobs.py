@@ -1,4 +1,4 @@
-from analytics.stats import log_event
+from dev.core.core_plugin.stats import log_event
 from database.sqlite_db import get_all_users
 from .db import get_user_achievements, grant_achievement, get_achievement_by_code
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from analytics.stats import EVENTS_LOG_PATH, write_summary_report
+from dev.core.core_plugin.stats import EVENTS_LOG_PATH, write_summary_report
 from .service import crisis_log, crisis_tg
 
 def backupDB(context):

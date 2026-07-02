@@ -14,9 +14,13 @@ class AppContext:
         config: Any,
         tg_adapter,
         bank_adapter,
+        rpg_adapter,
+        vk_adapter,
         admin_id: int,
         chat_mishas_den: int,
         channel: int,
+        debug_status: bool,
+        hybernation_status: bool,
         ai_service: Any | None = None,
         post_publisher: Any | None = None,
         telegram_admin_target: Any | None = None,
@@ -29,9 +33,13 @@ class AppContext:
         self.config = config
         self.tg_adapter = tg_adapter
         self.bank_adapter = bank_adapter
+        self.rpg_adapter = rpg_adapter
+        self.vk_adapter = vk_adapter
         self.admin_id = admin_id
         self.chat_mishas_den = chat_mishas_den
         self.channel = channel
+        self.debug_status = debug_status
+        self.hybernation_status = hybernation_status
         self.ai_service = ai_service
         self.post_publisher = post_publisher
         self.telegram_admin_target = telegram_admin_target

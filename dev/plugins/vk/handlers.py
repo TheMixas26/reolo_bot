@@ -1,30 +1,18 @@
 from __future__ import annotations
-
-import config as app_config
-import logging
-import time
-
-from analytics.stats import log_event
-from plugins.predlojka.handlers import submit_external_post
-from posting.runtime import vk_adapter
-from posting.services import PostParser
-from utils.utils import thx_for_message
 from varibles.dialogue_loader import TEXT
-
-logger = logging.getLogger(__name__)
-
-
-def _is_hibernation_enabled() -> bool:
-    return bool(getattr(app_config, "HIBERNATION", False))
+from dev.core.core_plugin.stats import log_event
+from plugins.predlojka.handlers import submit_external_post
+from posting.services import PostParser
+from plugins.predlojka import thx_for_message
 
 
-def _acknowledge_vk_submission(peer_id: int, author_name: str, *, is_question: bool) -> None:
+def _acknowledge_vk_submission(vk_adapter, peer_id: int, author_name: str, *, is_question: bool) -> None:
     if vk_adapter is None:
         return
     vk_adapter.send_message(peer_id, thx_for_message(author_name, mes_type="?" if is_question else "!"))
 
 
-def _send_vk_message(peer_id: int, text: str, *, ignore_reaction: bool) -> None:
+def _send_vk_message(vk_adapter, peer_id: int, text: str, *, ignore_reaction: bool) -> None:
     if vk_adapter is None or ignore_reaction:
         return
     vk_adapter.send_message(peer_id, text)
@@ -35,10 +23,10 @@ def _handle_vk_ai_request(context, peer_id: int, from_id: int, author_name: str,
 
     try:
         full_text = context.ai_service.ask_ai(prompt_text, author_name)
-        _send_vk_message(peer_id, full_text, ignore_reaction=ignore_reaction)
+        _send_vk_message(context.vk_adapter, peer_id, full_text, ignore_reaction=ignore_reaction)
         log_event("ai_completed", bot="predlojka", user_id=from_id, chat_id=peer_id, metadata={"source_platform": "vk"})
     except Exception as error:
-        logger.error(f"VK AI request failed: {error}", exc_info=True)
+        context.logger.error(f"VK AI request failed: {error}", exc_info=True)
         log_event(
             "ai_failed",
             bot="predlojka",
@@ -46,17 +34,16 @@ def _handle_vk_ai_request(context, peer_id: int, from_id: int, author_name: str,
             chat_id=peer_id,
             metadata={"source_platform": "vk", "error": str(error)[:300]},
         )
-        _send_vk_message(peer_id, "Извините, что-то пошло не так... Попробуй ещё раз позже (^_^;)", ignore_reaction=ignore_reaction)
+        _send_vk_message(context.vk_adapter, peer_id, "Извините, что-то пошло не так... Попробуй ещё раз позже (^_^;)", ignore_reaction=ignore_reaction)
 
 
-def run_vk_listener(context=None) -> None:
+def run_vk_listener(context) -> None:
+    vk_adapter = context.vk_adapter
+    logger = context.logger
+
     if vk_adapter is None:
         logger.info("VK listener skipped: adapter is not configured.")
         return
-    if context is None:
-        from main import context as app_context
-
-        context = app_context
 
     logger.info("VK listener started.")
 
@@ -79,18 +66,18 @@ def run_vk_listener(context=None) -> None:
 
                 parsed = PostParser.parse_submission_text(message.get("text") or "")
                 author_name = vk_adapter.build_display_name(from_id)
-                if _is_hibernation_enabled():
+                if context.hybernation_status:
                     vk_adapter.send_message(peer_id, TEXT("hibernation_message"))
                     continue
                 if parsed.ignore_reaction:
                     continue
                 if parsed.route != "post":
                     if parsed.route == "message":
-                        _send_vk_message(peer_id, "Тег #message из VK пока не поддерживается. Напиши напрямую админу в Telegram.", ignore_reaction=parsed.ignore_reaction)
+                        _send_vk_message(vk_adapter, peer_id, "Тег #message из VK пока не поддерживается. Напиши напрямую админу в Telegram.", ignore_reaction=parsed.ignore_reaction)
                     elif parsed.route == "report":
-                        _send_vk_message(peer_id, "Тег #report из VK пока не поддерживается отдельным маршрутом. Лучше продублировать это в Telegram.", ignore_reaction=parsed.ignore_reaction)
+                        _send_vk_message(vk_adapter, peer_id, "Тег #report из VK пока не поддерживается отдельным маршрутом. Лучше продублировать это в Telegram.", ignore_reaction=parsed.ignore_reaction)
                     elif parsed.route == "event":
-                        _send_vk_message(peer_id, "Тег #event из VK пока не поддерживается отдельным маршрутом. Лучше прислать идею в Telegram.", ignore_reaction=parsed.ignore_reaction)
+                        _send_vk_message(vk_adapter, peer_id, "Тег #event из VK пока не поддерживается отдельным маршрутом. Лучше прислать идею в Telegram.", ignore_reaction=parsed.ignore_reaction)
                     continue
 
                 if parsed.wants_ai:
@@ -106,7 +93,7 @@ def run_vk_listener(context=None) -> None:
 
                 post = vk_adapter.create_post_from_event(event)
                 if not post.text and not post.attachments:
-                    _send_vk_message(peer_id, "Пока что я умею принимать из VK только текст, фото и документы.", ignore_reaction=parsed.ignore_reaction)
+                    _send_vk_message(vk_adapter, peer_id, "Пока что я умею принимать из VK только текст, фото и документы.", ignore_reaction=parsed.ignore_reaction)
                     continue
 
                 submit_external_post(
@@ -115,6 +102,7 @@ def run_vk_listener(context=None) -> None:
                         None
                         if parsed.ignore_reaction
                         else lambda prepared_post, peer_id=peer_id: _acknowledge_vk_submission(
+                            vk_adapter,
                             peer_id,
                             prepared_post.author.display_name,
                             is_question=prepared_post.is_question,
@@ -133,4 +121,3 @@ def run_vk_listener(context=None) -> None:
                 )
         except Exception as error:
             logger.error(f"VK listener crashed: {error}", exc_info=True)
-            time.sleep(5)

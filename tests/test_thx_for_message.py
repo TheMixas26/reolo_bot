@@ -16,7 +16,7 @@ class FixedDayDatetime(datetime):
 class ThxForMessageTests(unittest.TestCase):
     def test_thx_for_message_returns_string_for_all_types(self):
         with isolated_project_imports():
-            utils_module = __import__("utils.utils", fromlist=["thx_for_message"])
+            utils_module = __import__("plugins.predlojka", fromlist=["thx_for_message"])
 
         with patch.object(utils_module, "TEXT", side_effect=lambda *keys, **kwargs: f"{'/'.join(keys)}::{kwargs.get('name', '')}"), patch.object(
             utils_module, "datetime", FixedDayDatetime
@@ -29,7 +29,7 @@ class ThxForMessageTests(unittest.TestCase):
 
     def test_exclamation_branch_chooses_expected_text_bucket(self):
         with isolated_project_imports():
-            utils_module = __import__("utils.utils", fromlist=["thx_for_message"])
+            utils_module = __import__("plugins.predlojka", fromlist=["thx_for_message"])
 
         branch_cases = (
             (0.10, "thx/day/variants_v"),
@@ -46,7 +46,7 @@ class ThxForMessageTests(unittest.TestCase):
     def test_random_modules_are_not_shadowed(self):
         with isolated_project_imports():
             dialogue_loader = __import__("varibles.dialogue_loader", fromlist=["TEXT"])
-            utils_module = __import__("utils.utils", fromlist=["thx_for_message"])
+            utils_module = __import__("plugins.predlojka", fromlist=["thx_for_message"])
 
         self.assertTrue(hasattr(dialogue_loader.random, "choice"))
         self.assertTrue(hasattr(utils_module.random, "random"))

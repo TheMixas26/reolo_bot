@@ -9,13 +9,14 @@ import random
 from telebot import types
 from varibles.dialogue_loader import TEXT
 
-from analytics.stats import log_event
+from dev.core.core_plugin.stats import log_event, log_command_usage
 from database.scheduled_posts_db import create_scheduled_post
 from database.sqlite_db import add_to_post_counter
 from posting.models import Post
 from posting.services import PostFormatter
 from plugins.ai.handlers import process_ai_message
-from utils.utils import thx_for_message
+from plugins.predlojka import thx_for_message
+from database.scheduled_posts_db import list_scheduled_posts
 
 from . import service as predlojka_service
 from .service import (
@@ -36,6 +37,7 @@ from .service import (
     safe_delete_message,
     safe_send_media_group,
     storage_user_id_for_post,
+    _preview_scheduled_payload
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -1294,6 +1296,29 @@ def publish_due_scheduled_posts() -> None:
 
     run_job()
 
+def show_scheduled_posts(message):
+    if message.from_user.id != admin:
+        return
+
+    log_command_usage("predlojka", "scheduled_posts", message)
+    rows = list_scheduled_posts(limit=30)
+
+    if not rows:
+        predlojka_telegram_adapter.reply_to(message, "В `scheduled_posts` пока пусто: ни черновиков, ни отложек нет.", parse_mode="Markdown")
+        return
+
+    lines = ["Содержимое `scheduled_posts`:\n"]
+    for row in rows:
+        status_label = "Запланировано" if row["status"] == "scheduled" else "Черновик"
+        publish_at = row.get("publish_at") or "без даты"
+        content_type = row.get("content_type") or "unknown"
+        source_user_id = row.get("source_user_id")
+        preview = _preview_scheduled_payload(row.get("payload") or {}, content_type)
+        lines.append(
+            f"#{row['doc_id']} | {status_label} | {content_type} | {publish_at} | user {source_user_id}\n{preview}\n"
+        )
+
+    predlojka_telegram_adapter.reply_to(message, "\n".join(lines), parse_mode="Markdown")
 
 def submit_external_post(post: Post, *, acknowledge_callback=None) -> None:
     storage_user_id = ensure_post_author_exists(post)
@@ -1357,6 +1382,11 @@ def register_handlers(context) -> None:
         media_group_handler,
         content_types=["photo", "video"],
     )
+    bot.register_message_handler(
+        show_scheduled_posts,
+        commands=['drafts', 'scheduled_posts']
+    )
+    
     bot.register_callback_query_handler(accept_album, func=lambda call: call.data == "mod_album:approve")
     bot.register_callback_query_handler(reject_album, func=lambda call: call.data == "mod_album:reject")
     bot.register_callback_query_handler(draft_album, func=lambda call: call.data == "mod_album:draft")

@@ -1,7 +1,3 @@
-"""Каталог карт и базовые игровые константы."""
-
-from __future__ import annotations
-
 RARITY_WEIGHTS = {
     "1-C": 60,
     "2-UC": 25,
