@@ -58,7 +58,7 @@ def register_handlers(context):
                     metadata={"target_username": username, "mode": "username"},
                 )
             else:
-                predlojka_telegram_adapter.reply_to(message, "У меня ошибка при добавлении. Надёжнее всего использовать эту команду reply-ответом на сообщение пользователя. Так я точно вас не подведу!")
+                predlojka_telegram_adapter.reply_to(message, TEXT("err", "bday_adding"))
         except Exception as e:
             predlojka_telegram_adapter.reply_to(message, f"Ошибка: {e}")
 
@@ -97,11 +97,11 @@ def register_handlers(context):
                 metadata={"enabled": not current},
             )
             if not current:
-                predlojka_telegram_adapter.reply_to(message, "Личные уведомления о дне рождения включены!")
+                predlojka_telegram_adapter.reply_to(message, TEXT("personal_bday_enabled"))
             else:
-                predlojka_telegram_adapter.reply_to(message, "Личные уведомления о дне рождения отключены!")
+                predlojka_telegram_adapter.reply_to(message, TEXT("personal_bday_disabled"))
         else:
-            predlojka_telegram_adapter.reply_to(message, "Сначала добавьте свой день рождения через /add_birthday.")
+            predlojka_telegram_adapter.reply_to(message, TEXT("add_bday_before"))
 
     def handle_send_personal_daily(message):
         if message.from_user.id != admin:
