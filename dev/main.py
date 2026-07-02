@@ -1,24 +1,33 @@
 """Точка входа в бота, запускайте именно этот файл."""
 
-from analytics.stats import log_event
-from handlers import user_handlers, admin_handlers, misc_handlers, achievements_handlers, predlojka_handlers, bank_handlers, vk_handlers
-from handlers.card_handlers import callbacks as card_callbacks
-from handlers.card_handlers import commands as card_commands
+from dev.core.core_plugin.stats import log_event
+import config as cfg
+from varibles.dialogue_loader import load_texts
 from posting.runtime import vk_adapter
-from utils.schedulers import scheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 import subprocess
 
 import logging
 from threading import Thread
 import time
-from utils.schedulers import start_scheduler
 import sys
+from posting.runtime import post_publisher, predlojka_telegram_adapter, telegram_admin_target, bank_telegram_adapter, rpg_telegram_adapter
 
-from DID.kochegar import StokerLogger
-from DID.varya import VaryaStokerLogger
+from core.context import AppContext
+from core.core_plugin import CorePlugin
+from plugins.predlojka import PredlojkaPlugin
+from plugins.vk import VKPlugin
+from plugins.birthdays import BirthdaysPlugin
+from plugins.weather import WeatherPlugin
+from plugins.ai import AIPlugin, AIService
+from plugins.admin_utils import AdminUtilsPlugin
+from plugins.bank import BankPlugin
+from plugins.achievements import AchievementsPlugin
+from plugins.calendar import CalendarPlugin
+from plugins.cardgame import CardGamePlugin
 
 try:
-    from config import predlojka_bot, admin, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
+    from config import predlojka_bot, admin, channel, chat_mishas_den, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
 except Exception as e:
     print(f"[КОЧЕГАР] - Ё-моё, настройки не грузятся! {e}")
     exit(1)
@@ -30,15 +39,71 @@ logging.basicConfig(
     handlers=[
         logging.FileHandler('bot_errors.log', encoding='utf-8'),
         logging.StreamHandler()
-    ]
-)
+    ])
+
+
 
 logger = logging.getLogger(__name__)
-kochegar = StokerLogger()
-varya = VaryaStokerLogger()
+
+ai_service = AIService(
+    catalog_id=cfg.CATALOG_ID,
+    secret_key=cfg.SECRET_KEY,
+    logger=logger.getChild("ai"),
+)
+
+scheduler = BackgroundScheduler()
+
+
+context = AppContext(
+    predlojka_bot=predlojka_bot,
+    bank_bot=bank_bot,
+    rpg_bot=rpg_bot,
+    scheduler=scheduler,
+    logger=logger,
+    config=cfg,
+    tg_adapter=predlojka_telegram_adapter,
+    bank_adapter=bank_telegram_adapter,
+    rpg_adapter=rpg_telegram_adapter,
+    vk_adapter=vk_adapter,
+    admin_id=admin,
+    chat_mishas_den=chat_mishas_den,
+    channel=channel,
+    debug_status=DEBUG_MODE,
+    hybernation_status=HIBERNATION,
+    ai_service=ai_service,
+    post_publisher=post_publisher,
+    telegram_admin_target=telegram_admin_target,
+)
+
+
+kochegar = context.logger_factory("core", persona="Кочегар")
+varya = context.logger_factory("predlojka", persona="Варя")
+
+
+enabled_plugins = [
+    PredlojkaPlugin,
+    BirthdaysPlugin,
+    WeatherPlugin,
+    AIPlugin,
+    VKPlugin,
+    AdminUtilsPlugin,
+    BankPlugin,
+    AchievementsPlugin,
+    CalendarPlugin,
+    CardGamePlugin,
+]
+
+load_texts(enabled_plugins)
+
+CorePlugin.setup(context)
+for plugin in enabled_plugins:
+    plugin.setup(context)
+
+
 
 def run_pre_launch_tests():    
-    kochegar.start_test_suite()
+    kochegar.say("🌅 Ну чё, день начинается... Топить будем?")
+    kochegar.say("🔍 Проверяю систему, как учил старый машинист...", "debug")
     kochegar.say("🔧 Эй, pytest, проверь-ка систему!")
     
     # Просто запускаем pytest и смотрим на код возврата
@@ -46,7 +111,8 @@ def run_pre_launch_tests():
     
     if exit_code == 0:
         kochegar.say("✅ Всё пучком! Тесты прошли!")
-        kochegar.all_tests_passed()
+        kochegar.say("🎉 УРА! Все тесты прошли! Можно топку разжигать!")
+        kochegar.say("💨 Пар пошёл, бот загружается...")
         return True
     else:
         kochegar.say("💀 ТЕСТЫ НЕ ПРОШЛИ! Смотри выше, где pytest ругается", "error")
@@ -59,10 +125,10 @@ def run_bot(bot_instance, bot_name, analytics_bot_name):
 
     while True:
 
-        kochegar.starting_bot(bot_name)
+        kochegar.say(f"🚂 Запускаю {bot_name}... Держи дверь, ща пару поддадим!")
         try:
             bot_info = bot_instance.get_me()
-            kochegar.bot_started(bot_name, bot_info.id)
+            kochegar.say(f"✨ {bot_name} (ID: {bot_info.id}) - работает! Как по маслу!")
             log_event("bot_started", bot=analytics_bot_name, metadata={"telegram_bot_id": bot_info.id, "display_name": bot_name})
             
             # Запускаем polling
@@ -73,7 +139,8 @@ def run_bot(bot_instance, bot_name, analytics_bot_name):
                 allowed_updates=['message', 'callback_query', 'edited_message']
             )
         except Exception as e:
-            kochegar.bot_crashed(bot_name, str(e))
+            kochegar.say(f"💥 {bot_name} рухнул! {e}", "error")
+            kochegar.say("🔧 Стучу по котлу молотком, перезапускаю...", "warn")
             log_event("bot_crashed", bot=analytics_bot_name, metadata={"display_name": bot_name, "error": str(e)[:300]})
             kochegar.say("🔄 Кочегар стучит по трубам, пробуем снова...")
             time.sleep(restart_delay)
@@ -89,7 +156,7 @@ if __name__ == "__main__":
     kochegar.say("🏭 Здорово, работяги! Кочегар на месте, топка горит!")
 
     if DEBUG_MODE:
-        kochegar.debug_mode()
+        kochegar.say("🔧 РЕЖИМ ОТЛАДКИ! Я буду всё комментировать, даже как угли пересыпаю...", "debug")
     else:
         kochegar.say("🎮 ПРОДАКШН РЕЖИМ: Все системы на пределе, жми на газ!")
     
@@ -104,7 +171,7 @@ if __name__ == "__main__":
         sys.exit(1)
     
     # ========== ТЕСТЫ ПРОШЛИ - ЗАПУСКАЕМ БОТОВ ==========
-    start_scheduler()
+    scheduler.start()
 
     kochegar.say("🎉 УРА! ТЕСТЫ ПРОШЛИ! ЗАПУСКАЮ ВСЕХ БОТОВ!")
     
@@ -122,25 +189,14 @@ if __name__ == "__main__":
     threads.append(t2)
     kochegar.say("🎲 RPG бот запущен")
     
-    # VK
-    if vk_adapter is not None:
-        t_vk = Thread(target=vk_handlers.run_vk_listener, daemon=True)
-        t_vk.start()
-        threads.append(t_vk)
-        kochegar.say("📱 VK адаптер запущен")
-    else:
-        kochegar.say("⚠️ VK адаптер не подключён", "warn")
     
-    # Банк (только не в DEBUG режиме)
-    if DEBUG_MODE:
-        kochegar.say("🔧 Отладка: БАНК НЕ ЗАПУЩЕН (в DEBUG режиме он отдыхает)", "warn")
-    else:
-        t3 = Thread(target=run_bot, args=(bank_bot, "БАНК", "bank"), daemon=True)
-        t3.start()
-        threads.append(t3)
-        kochegar.say("💰 Банковский бот запущен")
-    
-    kochegar.system_ready()
+    t3 = Thread(target=run_bot, args=(bank_bot, "БАНК", "bank"), daemon=True)
+    t3.start()
+    threads.append(t3)
+    kochegar.say("💰 Банковский бот запущен")
+
+    kochegar.say("🎪 ВСЁ! Бот в строю! Могу пойти чайку попить...")
+    kochegar.say("☕ Кочегар уходит в тень, но следит... Всегда следит.")
     
     # Основной поток просто ждёт
     try:

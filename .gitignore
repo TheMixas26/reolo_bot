@@ -14,3 +14,4 @@ dev/analytics/bot_stats_summary.txt
 dev/handlers/predlojka_handlers.py
 dev/analytics/bot_stats_summary.txt
 dev/database/posts.json
+all_texts.json

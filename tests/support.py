@@ -27,10 +27,12 @@ PROJECT_MODULE_PREFIXES = (
     "bank",
     "card_game",
     "config",
+    "core",
     "database",
     "handlers",
     "imp_cards",
     "main",
+    "plugins",
     "posting",
     "settings",
     "utils",
@@ -54,7 +56,7 @@ class TextCall:
 
 
 def iter_python_files() -> list[Path]:
-    ignored_parts = {"__pycache__", ".venv", "site-packages"}
+    ignored_parts = {"__pycache__", ".venv", "site-packages", "plugin_template"}
     return sorted(
         path
         for path in DEV_ROOT.rglob("*.py")
@@ -125,6 +127,8 @@ class FakeMessage:
 class FakeBot:
     def __init__(self, token: str = "stub-token"):
         self.token = token
+        self.message_handlers: list[tuple[object, tuple, dict]] = []
+        self.callback_query_handlers: list[tuple[object, tuple, dict]] = []
 
     @staticmethod
     def _decorator(*args, **kwargs):
@@ -135,6 +139,14 @@ class FakeBot:
 
     message_handler = _decorator
     callback_query_handler = _decorator
+
+    def register_message_handler(self, callback, *args, **kwargs):
+        self.message_handlers.append((callback, args, kwargs))
+        return None
+
+    def register_callback_query_handler(self, callback, *args, **kwargs):
+        self.callback_query_handlers.append((callback, args, kwargs))
+        return None
 
     def send_message(self, chat_id, text, **kwargs):
         return FakeMessage(chat_id=chat_id, text=text)
