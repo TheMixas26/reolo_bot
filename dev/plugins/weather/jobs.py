@@ -8,7 +8,7 @@ def send_weather(context):
     Фоновая задача: получить прогноз и отправить его в чат.
     """
     logger = context.logger_factory("weather", persona="Тайлер Дерден")
-    tg = context.tg_adapter
+    tg = context.predlojka_bot
     admin = context.admin_id
 
     try:

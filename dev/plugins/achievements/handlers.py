@@ -4,7 +4,6 @@ from .db import get_all_achievements, add_achievement, grant_achievement, revoke
 from plugins.bank.db import get_balance
 
 def register_handlers(context):
-    predlojka_telegram_adapter = context.tg_adapter
     admin = context.admin_id
     predlojka_bot = context.predlojka_bot
 
@@ -12,12 +11,12 @@ def register_handlers(context):
         log_command_usage("predlojka", "achievements", message)
         achievements = get_all_achievements()
         if not achievements:
-            predlojka_telegram_adapter.reply_to(message, "Пока что никаких достижений нет. (;￣▽￣)")
+            predlojka_bot.reply_to(message, "Пока что никаких достижений нет. (;￣▽￣)")
         else:
             response = "А вот и все доступные вам достижения:\n"
             for ach in achievements:
                 response += f"- {ach['name']} (код: {ach['code']}): {ach['description']}\n"
-            predlojka_telegram_adapter.reply_to(message, response)
+            predlojka_bot.reply_to(message, response)
 
     def get_achievements_command(message):
         log_command_usage("predlojka", "me", message)
@@ -34,7 +33,7 @@ def register_handlers(context):
 
         balance_text = f"\nВаш баланс: {balance}" if balance is not None else "\nВаш баланс пока недоступен."
 
-        predlojka_telegram_adapter.reply_to(message, f"Здравствуйте, {message.from_user.first_name}! Рада, что вы заинтересовались собой!)\n\n{achievements_text}\n\n{balance_text}")
+        predlojka_bot.reply_to(message, f"Здравствуйте, {message.from_user.first_name}! Рада, что вы заинтересовались собой!)\n\n{achievements_text}\n\n{balance_text}")
 
     def add_achievement_command(message):
         if message.from_user.id != admin:
@@ -48,14 +47,14 @@ def register_handlers(context):
 
             add_achievement(code, name, description)
 
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 TEXT("achievement_created").format(name=name, code=code)
             )
             log_event("achievement_created", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"achievement_code": code})
 
         except ValueError:
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 "Формат:\n"
                 "/add_achievement code | name | description"
@@ -74,7 +73,7 @@ def register_handlers(context):
 
             grant_achievement(user_id, achievement_code)
 
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 f"Успешно выдала Достижение '{achievement_code}' пользователю {user_id}!"
             )
@@ -87,7 +86,7 @@ def register_handlers(context):
             )
 
         except ValueError:
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 "Формат:\n"
                 "/grant_achievement user_id | achievement_code"
@@ -106,7 +105,7 @@ def register_handlers(context):
 
             revoke_achievement(user_id, achievement_code)
 
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 f"Достижение '{achievement_code}' конфисковано у пользователя {user_id}!)))"
             )
@@ -119,7 +118,7 @@ def register_handlers(context):
             )
 
         except ValueError:
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 "Формат:\n"
                 "/revoke_achievement user_id | achievement_code"
@@ -138,7 +137,7 @@ def register_handlers(context):
 
             update_achievement(achievement_code, conditions=conditions)
 
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 f"Обновила условия достижения '{achievement_code}' на '{conditions}'."
             )
@@ -151,7 +150,7 @@ def register_handlers(context):
             )
 
         except ValueError:
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 "Формат:\n"
                 "/add_conditions achievement_code | conditions"

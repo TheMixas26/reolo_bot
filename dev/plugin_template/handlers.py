@@ -3,7 +3,6 @@ from varibles.dialogue_loader import TEXT
 
 
 def register_handlers(context):
-    predlojka_telegram_adapter = context.tg_adapter
     admin = context.admin_id
     bot = context.predlojka_bot
 
@@ -12,7 +11,7 @@ def register_handlers(context):
         if message.from_user.id != admin:
             return
         send_to_chat(context)
-        predlojka_telegram_adapter.reply_to(message, TEXT("testing_text"))
+        bot.reply_to(message, TEXT("testing_text"))
 
 
 

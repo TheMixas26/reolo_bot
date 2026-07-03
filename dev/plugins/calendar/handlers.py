@@ -3,7 +3,6 @@ from core.core_plugin.stats import log_command_usage
 
 
 def register_handlers(context):
-    predlojka_telegram_adapter = context.tg_adapter
     predlojka_bot = context.predlojka_bot
 
     def imperial_today(message):
@@ -24,11 +23,11 @@ def register_handlers(context):
                 f"Праздник: {event}"
             )
 
-            predlojka_telegram_adapter.reply_to(message, response)
+            predlojka_bot.reply_to(message, response)
 
         except Exception as e:
             context.logger.error(f"Ошибка в imperial_today: {e}")
-            predlojka_telegram_adapter.reply_to(message, TEXT("err", "get_today_date"))
+            predlojka_bot.reply_to(message, TEXT("err", "get_today_date"))
 
     def imperial_nearest_event(message):
         log_command_usage("predlojka", "nearest_event", message)
@@ -45,11 +44,11 @@ def register_handlers(context):
                     f"(через {e['daysLeft']} дн.)\n"
                 )
 
-            predlojka_telegram_adapter.reply_to(message, response)
+            predlojka_bot.reply_to(message, response)
 
         except Exception as e:
             context.logger.error(f"Ошибка в imperial_nearest_event: {e}")
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 TEXT("err", "get_nearest_event")
             )
@@ -69,11 +68,11 @@ def register_handlers(context):
                     f"(через {e['daysLeft']} дн.)\n"
                 )
 
-            predlojka_telegram_adapter.reply_to(message, response)
+            predlojka_bot.reply_to(message, response)
 
         except Exception as e:
             context.logger.error(f"Ошибка в imperial_all_events: {e}")
-            predlojka_telegram_adapter.reply_to(
+            predlojka_bot.reply_to(
                 message,
                 TEXT("err", "get_all_events")
             )

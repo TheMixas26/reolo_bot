@@ -7,7 +7,6 @@ import subprocess
 from database.sqlite_db import get_all_users
 
 def register_handlers(context):
-    predlojka_telegram_adapter = context.tg_adapter
     admin = context.admin_id
     bot = context.predlojka_bot
 
@@ -21,43 +20,43 @@ def register_handlers(context):
             try:
                 caption = message.reply_to_message.caption or message.reply_to_message.text or ""
                 if caption:
-                    predlojka_telegram_adapter.copy_message(context.channel, message.chat.id, message.reply_to_message.message_id, caption=caption)
+                    bot.copy_message(context.channel, message.chat.id, message.reply_to_message.message_id, caption=caption)
                 else:
-                    predlojka_telegram_adapter.copy_message(context.channel, message.chat.id, message.reply_to_message.message_id)
-                predlojka_telegram_adapter.reply_to(message, TEXT("fakepost", "successfully"))
+                    bot.copy_message(context.channel, message.chat.id, message.reply_to_message.message_id)
+                bot.reply_to(message, TEXT("fakepost", "successfully"))
                 log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "reply_copy"})
                 return
             except Exception as e:
-                predlojka_telegram_adapter.reply_to(message, f"{TEXT("err", "message_forward")}{e}")
+                bot.reply_to(message, f"{TEXT("err", "message_forward")}{e}")
                 return
 
-        predlojka_telegram_adapter.reply_to(message, TEXT("fakepost", "start"), parse_mode="MarkdownV2")
+        bot.reply_to(message, TEXT("fakepost", "start"), parse_mode="MarkdownV2")
         bot.register_next_step_handler(message, handle_fake_post2(context))
 
     def handle_fake_post2(context, message):
         if message.from_user.id != admin:
             return
         try:
-            predlojka_telegram_adapter.send_message(context.channel, message.text)
-            predlojka_telegram_adapter.send_message(message.chat.id, TEXT("fakepost", "done"))
+            bot.send_message(context.channel, message.text)
+            bot.send_message(message.chat.id, TEXT("fakepost", "done"))
             log_event("fake_post_sent", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"mode": "text"})
         except Exception as e:
-            predlojka_telegram_adapter.send_message(message.chat.id, f"(╥﹏╥) Ошибка при отправке поста: {e}")
+            bot.send_message(message.chat.id, f"(╥﹏╥) Ошибка при отправке поста: {e}")
 
     def stop_bot(message):
         if message.from_user.id != admin:
             return
         log_command_usage("predlojka", "stop_bot", message)
-        predlojka_telegram_adapter.reply_to(message, TEXT("stop_bot"))
+        bot.reply_to(message, TEXT("stop_bot"))
         with open('doc/shoot-at-the-server-room-during-the-evacuation.png', 'rb') as photo:
-            predlojka_telegram_adapter.send_photo(message.chat.id, photo)
+            bot.send_photo(message.chat.id, photo)
         SystemExit("Бот остановлен администратором")
 
     def update_bot(message):
         if message.from_user.id != admin:
             return
         log_command_usage("predlojka", "update_bot", message)
-        predlojka_telegram_adapter.reply_to(message, TEXT('update_bot'))
+        bot.reply_to(message, TEXT('update_bot'))
         subprocess.run(['git', 'pull'])
         SystemExit("Бот перезапущен администратором")
 
@@ -65,7 +64,7 @@ def register_handlers(context):
         if message.from_user.id != admin:
             return
         log_command_usage("predlojka", "broadcast", message)
-        predlojka_telegram_adapter.reply_to(message, TEXT("broadcast_start"))
+        bot.reply_to(message, TEXT("broadcast_start"))
         bot.register_next_step_handler(message, handle_public_notify)
 
 
@@ -77,14 +76,14 @@ def register_handlers(context):
             sent_count = 0
             for user in users:
                 try:
-                    predlojka_telegram_adapter.send_message(user['user_id'], message.text)
+                    bot.send_message(user['user_id'], message.text)
                     sent_count += 1
                 except Exception as e:
                     context.logger.error(f"Ошибка при отправке сообщения пользователю {user['user_id']}: {e}")
             log_event("broadcast_completed", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"sent_count": sent_count})
-            predlojka_telegram_adapter.reply_to(message, TEXT("broadcast_done"))
+            bot.reply_to(message, TEXT("broadcast_done"))
         except Exception as e:
-            predlojka_telegram_adapter.reply_to(message, f"(╥﹏╥) Ошибка при рассылке: {e}")
+            bot.reply_to(message, f"(╥﹏╥) Ошибка при рассылке: {e}")
 
     def send_actual_db(message):
         if message.from_user.id != admin:
@@ -92,7 +91,7 @@ def register_handlers(context):
         log_command_usage("predlojka", "send_actual_db", message)
         backupDB()
         log_event("backup_requested", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
-        predlojka_telegram_adapter.reply_to(message, TEXT('backup_successfully_send'))
+        bot.reply_to(message, TEXT('backup_successfully_send'))
 
     def initial_send_commands(message):
         set_commands(context, message)
@@ -108,21 +107,21 @@ def register_handlers(context):
             user_id = int(user_id_str.strip())
             text_to_send = text_to_send.strip()
         except ValueError:
-            predlojka_telegram_adapter.reply_to(message, "Ошибка формата. Используйте: /send_smth ID|текст сообщения")
+            bot.reply_to(message, "Ошибка формата. Используйте: /send_smth ID|текст сообщения")
             return
         except Exception as e:
-            predlojka_telegram_adapter.reply_to(message, f"Произошла ошибка: {e}")
+            bot.reply_to(message, f"Произошла ошибка: {e}")
             return
 
         try:
-            predlojka_telegram_adapter.send_message(user_id, text_to_send)
-            predlojka_telegram_adapter.reply_to(
+            bot.send_message(user_id, text_to_send)
+            bot.reply_to(
                 message,
                 f"Сообщение успешно отправлено получателю с ID {user_id}."
             )
         except Exception as e:
         
-            predlojka_telegram_adapter.reply_to(
+            bot.reply_to(
                 message,
                 f"Не удалось отправить сообщение получателю с ID {user_id}. Ошибка: {e}"
             )

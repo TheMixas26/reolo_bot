@@ -10,7 +10,6 @@ import logging
 from threading import Thread
 import time
 import sys
-from posting.runtime import post_publisher, predlojka_telegram_adapter, telegram_admin_target, bank_telegram_adapter, rpg_telegram_adapter
 
 from core.context import AppContext
 from core.core_plugin import CorePlugin
@@ -60,17 +59,13 @@ context = AppContext(
     scheduler=scheduler,
     logger=logger,
     config=cfg,
-    tg_adapter=predlojka_telegram_adapter,
-    bank_adapter=bank_telegram_adapter,
-    rpg_adapter=rpg_telegram_adapter,
     admin_id=admin,
     chat_mishas_den=chat_mishas_den,
     channel=channel,
     debug_status=DEBUG_MODE,
     hybernation_status=HIBERNATION,
     ai_service=ai_service,
-    post_publisher=post_publisher,
-    telegram_admin_target=telegram_admin_target,
+    telegram_admin_target=admin,
 )
 
 

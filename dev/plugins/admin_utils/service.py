@@ -30,7 +30,7 @@ def set_commands(context, message=None):
         log_event("commands_synced", bot="system", metadata={"triggered_by": message.from_user.id if message else "scheduler"})
 
         if message:
-            context.tg_adapter.reply_to(message, TEXT('setcmd_successfully'))
+            context.predlojka_bot.reply_to(message, TEXT('setcmd_successfully'))
 
 
 

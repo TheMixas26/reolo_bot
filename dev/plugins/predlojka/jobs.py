@@ -36,7 +36,7 @@ def publish_due_scheduled_posts() -> None:
             except Exception as error:
                 handlers.logger.error(f"Не удалось опубликовать отложенную запись {record['doc_id']}: {error}")
                 try:
-                    handlers.predlojka_telegram_adapter.send_message(
+                    handlers.predlojka_bot.send_message(
                         handlers.admin,
                         "Не удалось опубликовать отложенную запись.\n"
                         f"ID задачи: {record['doc_id']}\n"

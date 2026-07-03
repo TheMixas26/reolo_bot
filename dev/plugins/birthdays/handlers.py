@@ -7,7 +7,6 @@ from .service import send_personal_birthday_notifications, add_birthday, add_bir
 def register_handlers(context):
     logger = context.logger_factory("birthdays", persona="Никитос")
     bot = context.predlojka_bot
-    predlojka_telegram_adapter = context.tg_adapter
     admin = context.admin_id
 
 
@@ -22,14 +21,14 @@ def register_handlers(context):
             parts = message.text.split()
             if message.reply_to_message:
                 if len(parts) != 2:
-                    predlojka_telegram_adapter.reply_to(message, "Формат в reply: /add_birthday_by_username ДД.ММ")
+                    bot.reply_to(message, "Формат в reply: /add_birthday_by_username ДД.ММ")
                     return
                 target = message.reply_to_message.from_user
                 date_str = parts[1]
                 name = f"{target.first_name or ''} {target.last_name or ''}".strip()
                 ok = add_birthday(context, target.id, name, date_str)
                 if ok:
-                    predlojka_telegram_adapter.reply_to(message, f"День рождения для {name} добавлен!")
+                    bot.reply_to(message, f"День рождения для {name} добавлен!")
                     log_event(
                         "birthday_added_admin",
                         bot="predlojka",
@@ -38,18 +37,18 @@ def register_handlers(context):
                         metadata={"target_user_id": target.id, "mode": "reply"},
                     )
                 else:
-                    predlojka_telegram_adapter.reply_to(message, "Ошибка при добавлении. Вероятно, дело в дате!")
+                    bot.reply_to(message, "Ошибка при добавлении. Вероятно, дело в дате!")
                 return
 
             if len(parts) < 3:
-                predlojka_telegram_adapter.reply_to(message, "Формат: /add_birthday_by_username username ДД.ММ")
+                bot.reply_to(message, "Формат: /add_birthday_by_username username ДД.ММ")
                 return
             username = parts[1].lstrip('@')
             date_str = parts[2]
             chat_id = context.config.chat_mishas_den
             ok, name = add_birthday_by_username(context, username, date_str, chat_id)
             if ok:
-                predlojka_telegram_adapter.reply_to(message, f"День рождения для {name} добавлен!")
+                bot.reply_to(message, f"День рождения для {name} добавлен!")
                 log_event(
                     "birthday_added_admin",
                     bot="predlojka",
@@ -58,9 +57,9 @@ def register_handlers(context):
                     metadata={"target_username": username, "mode": "username"},
                 )
             else:
-                predlojka_telegram_adapter.reply_to(message, TEXT("err", "bday_adding"))
+                bot.reply_to(message, TEXT("err", "bday_adding"))
         except Exception as e:
-            predlojka_telegram_adapter.reply_to(message, f"Ошибка: {e}")
+            bot.reply_to(message, f"Ошибка: {e}")
 
 
     def handle_add_birthday(message):
@@ -68,19 +67,19 @@ def register_handlers(context):
         try:
             parts = message.text.split()
             if len(parts) != 2:
-                predlojka_telegram_adapter.reply_to(message, "Формат: /add_birthday ДД.ММ или /add_birthday ДД.ММ.ГГГГ")
+                bot.reply_to(message, "Формат: /add_birthday ДД.ММ или /add_birthday ДД.ММ.ГГГГ")
                 return
             date_str = parts[1]
             user_id = message.from_user.id
             name = f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip()
             ok = add_birthday(context, user_id, name, date_str)
             if ok:
-                predlojka_telegram_adapter.reply_to(message, "Ваш день рождения успешно добавлен!")
+                bot.reply_to(message, "Ваш день рождения успешно добавлен!")
                 log_event("birthday_added_user", bot="predlojka", user_id=user_id, chat_id=message.chat.id)
             else:
-                predlojka_telegram_adapter.reply_to(message, TEXT("err", "check_date_format"))
+                bot.reply_to(message, TEXT("err", "check_date_format"))
         except Exception as e:
-            predlojka_telegram_adapter.reply_to(message, f"Ошибка: {e}")
+            bot.reply_to(message, f"Ошибка: {e}")
 
     def handle_personal_notifications(message):
         log_command_usage("predlojka", "personal_notifications", message)
@@ -97,11 +96,11 @@ def register_handlers(context):
                 metadata={"enabled": not current},
             )
             if not current:
-                predlojka_telegram_adapter.reply_to(message, TEXT("personal_bday_enabled"))
+                bot.reply_to(message, TEXT("personal_bday_enabled"))
             else:
-                predlojka_telegram_adapter.reply_to(message, TEXT("personal_bday_disabled"))
+                bot.reply_to(message, TEXT("personal_bday_disabled"))
         else:
-            predlojka_telegram_adapter.reply_to(message, TEXT("add_bday_before"))
+            bot.reply_to(message, TEXT("add_bday_before"))
 
     def handle_send_personal_daily(message):
         if message.from_user.id != admin:

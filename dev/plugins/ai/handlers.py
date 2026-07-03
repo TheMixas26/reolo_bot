@@ -17,7 +17,7 @@ def _display_name(user) -> str:
 def process_ai_message(context, message, content) -> None:
     name = _display_name(message.from_user)
     prompt_text = content.clean_text or message.text
-    tg = context.tg_adapter
+    tg = context.predlojka_bot
     response_message = None if content.ignore_reaction else tg.reply_to(message, "Думаю... (*￣3￣)╭")
 
     log_event("ai_requested", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
