@@ -89,7 +89,7 @@ def _configure_runtime(context) -> None:
     channel_red = context.config.channel_red
     chat_mishas_den = context.config.chat_mishas_den
     backup_chat = context.config.backup_chat
-    HIBERNATION = context.config.HIBERNATION
+    HIBERNATION = False
     predlojka_service.configure(context)
 
 
