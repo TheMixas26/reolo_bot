@@ -1,5 +1,5 @@
 from __future__ import annotations
-from telebot import types
+from aiogram import types
 from .catalog import get_rarity_label, get_pack_name, RARITY_WEIGHTS
 from core.core_plugin.stats import log_event
 from dataclasses import dataclass, field

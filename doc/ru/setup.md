@@ -50,8 +50,6 @@ dev/settings.py
 ## Пример `dev/config.py`
 
 ```python
-import telebot
-
 DEBUG_MODE = True
 HIBERNATION = False
 
@@ -69,10 +67,6 @@ channel_red = 223456789
 chat_mishas_den = -100223456789
 backup_chat = 123123123123
 location = (55.75, 37.62)
-
-predlojka_bot = telebot.TeleBot(PREDLOJKA_TOKEN)
-bank_bot = telebot.TeleBot(BANK_TOKEN)
-rpg_bot = telebot.TeleBot(RPG_TOKEN)
 
 CATALOG_ID = "{yandex_cloud_catalog_id}"
 SECRET_KEY = "{yandex_cloud_api_key}"

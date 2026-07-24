@@ -5,7 +5,7 @@ from .service import set_commands
 class AdminUtilsPlugin:
     @staticmethod
     def register_handlers(context):
-        register_handlers(context)
+        context.include_router("predlojka", register_handlers(context))
 
     @staticmethod
     def register_jobs(context):
@@ -15,6 +15,7 @@ class AdminUtilsPlugin:
 
     @staticmethod
     def setup(context):
+        context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
         logger = context.logger_factory("test", persona="Имя")
         logger.say("It was an template!!..")
         AdminUtilsPlugin.register_jobs(context)

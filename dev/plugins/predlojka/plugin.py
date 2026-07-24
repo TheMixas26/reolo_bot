@@ -23,6 +23,7 @@ class PredlojkaPlugin:
 
     @staticmethod
     def setup(context):
+        context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
         logger = context.logger_factory("predlojka", persona="Варя")
         logger.say("Плагин предложки подключён.")
         PredlojkaPlugin.register_jobs(context)

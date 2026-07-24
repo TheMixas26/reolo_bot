@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-import requests
+import aiohttp
 
 
 class WeatherAPIError(Exception):
@@ -38,15 +38,16 @@ class WeatherService:
         return "❓"
 
 
-def get_weather_forecast(
+async def get_weather_forecast(
     latitude: float,
     longitude: float,
     start_hour: int = 12,
     end_hour: int = 20,
     timeout: int = 10,
+    session: Optional[aiohttp.ClientSession] = None,
 ) -> list[dict]:
     """
-    Получить прогноз погоды на указанные часы.
+    Получить прогноз погоды на указанные часы (асинхронно).
 
     Возвращает список словарей с данными.
     Выбрасывает WeatherAPIError при проблемах с API или форматом ответа.
@@ -61,14 +62,29 @@ def get_weather_forecast(
         f"start_date={today}&end_date={today}"
     )
 
-    try:
-        response = requests.get(url, timeout=timeout)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        raise WeatherAPIError(f"Ошибка подключения к API погоды: {e}") from e
+    # Если сессия не передана, создаём временную (закрывается автоматически)
+    if session is None:
+        async with aiohttp.ClientSession() as temp_session:
+            return await _fetch_forecast(temp_session, url, start_hour, end_hour, timeout)
+    else:
+        return await _fetch_forecast(session, url, start_hour, end_hour, timeout)
 
+
+async def _fetch_forecast(
+    session: aiohttp.ClientSession,
+    url: str,
+    start_hour: int,
+    end_hour: int,
+    timeout: int,
+) -> list[dict]:
+    """Вспомогательная функция для выполнения запроса и парсинга."""
     try:
-        data = response.json()
+        async with session.get(url, timeout=timeout) as response:
+            response.raise_for_status()  # выбросит aiohttp.ClientResponseError для 4xx/5xx
+            data = await response.json()
+    except (aiohttp.ClientError, aiohttp.ServerTimeoutError) as e:
+        raise WeatherAPIError(f"Ошибка подключения к API погоды: {e}") from e
+    
     except ValueError as e:
         raise WeatherAPIError("API погоды вернул невалидный JSON") from e
 
@@ -149,13 +165,14 @@ def format_weather_message(forecast_data: list[dict]) -> str:
     return message
 
 
-def get_current_weather(
+async def get_current_weather(
     latitude: float,
     longitude: float,
     timeout: int = 10,
+    session: Optional[aiohttp.ClientSession] = None,
 ) -> Optional[dict]:
     """
-    Получить текущую погоду.
+    Получить текущую погоду (асинхронно).
     """
     url = (
         "https://api.open-meteo.com/v1/forecast?"
@@ -163,22 +180,32 @@ def get_current_weather(
         "current_weather=true&timezone=auto&windspeed_unit=ms"
     )
 
+    if session is None:
+        async with aiohttp.ClientSession() as temp_session:
+            return await _fetch_current(temp_session, url, timeout)
+    else:
+        return await _fetch_current(session, url, timeout)
+
+
+async def _fetch_current(
+    session: aiohttp.ClientSession,
+    url: str,
+    timeout: int,
+) -> Optional[dict]:
     try:
-        response = requests.get(url, timeout=timeout)
-        response.raise_for_status()
-        data = response.json()
-        current = data.get("current_weather", {})
+        async with session.get(url, timeout=timeout) as response:
+            response.raise_for_status()
+            data = await response.json()
+            current = data.get("current_weather", {})
+            if not current:
+                return None
 
-        if not current:
-            return None
-
-        weather_code = current.get("weathercode", 0)
-
-        return {
-            "temperature": current.get("temperature", 0),
-            "wind_speed": current.get("windspeed", 0),
-            "weather_code": weather_code,
-            "icon": WeatherService.get_weather_icon(weather_code),
-        }
+            weather_code = current.get("weathercode", 0)
+            return {
+                "temperature": current.get("temperature", 0),
+                "wind_speed": current.get("windspeed", 0),
+                "weather_code": weather_code,
+                "icon": WeatherService.get_weather_icon(weather_code),
+            }
     except Exception:
         return None

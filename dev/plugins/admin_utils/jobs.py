@@ -1,39 +1,38 @@
 from datetime import datetime
 from pathlib import Path
+from aiogram.types import FSInputFile
 from core.core_plugin.stats import EVENTS_LOG_PATH, write_summary_report
 from .service import crisis_log, crisis_tg
 
-def backupDB(context):
+async def backupDB(context):
     """Создаёт резервную копию базы данных и аналитики и отправляет её в чат бэкапов."""
-    def send_backup_file(path: str | Path, visible_name: str, caption: str) -> None:
-        with open(path, mode='rb') as file:
-            context.predlojka_bot.send_document(
-                context.config.backup_chat,
-                file,
-                visible_file_name=visible_name,
-                caption=caption,
-                disable_notification=True
-            )
+    async def send_backup_file(path: str | Path, visible_name: str, caption: str) -> None:
+        await context.predlojka_bot.send_document(
+            context.config.backup_chat,
+            FSInputFile(path, filename=visible_name),
+            caption=caption,
+            disable_notification=True
+        )
 
     try:
         date_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
         summary_path = write_summary_report()
 
-        send_backup_file(
+        await send_backup_file(
             "dev/database/bot.sqlite3",
             f"db_backup_{date_str}.sqlite3",
             f"📦 Ежедневная порция данных за {date_str}",
         )
 
         if EVENTS_LOG_PATH.exists():
-            send_backup_file(
+            await send_backup_file(
                 EVENTS_LOG_PATH,
                 f"bot_events_{date_str}.jsonl",
                 f"📊 Сырой лог статистики за {date_str}",
             )
 
         if summary_path.exists():
-            send_backup_file(
+            await send_backup_file(
                 summary_path,
                 f"bot_stats_summary_{date_str}.txt",
                 f"📈 Сводка аналитики за {date_str}",
@@ -59,6 +58,6 @@ def backupDB(context):
         """
 
         try:
-            crisis_tg(context, f"{panic_message}")
+            await crisis_tg(context, f"{panic_message}")
         except:
             crisis_log(context, "🚨 КРИТИЧЕСКИЙ КРИЗИС: БОТ УМЕР И НЕ МОЖЕТ КРИЧАТЬ О ПОМОЩИ")

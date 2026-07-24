@@ -9,9 +9,13 @@ from .classes import MediaAttachment, MediaType, Platform, Post, PostAuthor, Pos
 from aiogram import types
 from .classes import to_storage_user_id, PostParser
 from varibles.dialogue_loader import TEXT
-from telebot.formatting import apply_html_entities
+from html import escape
 
 logger = logging.getLogger(__name__)
+
+
+def apply_html_entities(text, entities=None, custom_subs=None):
+    return escape(text or "")
 
 predlojka_bot = None
 channel = None

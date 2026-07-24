@@ -4,7 +4,6 @@ import pickle
 from pathlib import Path
 
 from core.core_plugin.stats import log_event
-from config import bank_bot
 from varibles.dialogue_loader import TEXT
 from database.sqlite_db import user_exists
 from .db import get_balance, set_balance
@@ -19,7 +18,6 @@ def edit_currency_info(message, bats: int, rubles: int) -> None:
     with CURRENCY_INFO_PATH.open("wb") as file:
         pickle.dump([bats, rubles], file)
 
-    bank_bot.reply_to(message, TEXT("currency_changed"))
     log_event(
         "currency_info_updated",
         bot="bank",
@@ -40,17 +38,17 @@ def view_currency_info() -> str:
     return f"{exchange_rate} {CURRENCY_NAME_GENITIVE.lower()} равняются 1 рублю"
 
 
-def get_money(message, amount: int) -> None:
+async def get_money(message, amount: int) -> None:
     try:
         to_user_id = int(message.text)
         if not user_exists(to_user_id):
-            bank_bot.reply_to(message, TEXT("err", "no_bank_account"))
+            await message.answer(TEXT("err", "no_bank_account"))
             return
 
         sender_id = message.from_user.id
         sender_balance = get_balance(sender_id)
         if sender_balance < amount:
-            bank_bot.reply_to(message, TEXT("err", "not_enought_money"))
+            await message.answer(TEXT("err", "not_enought_money"))
             return
 
         commission_amount = amount * BANK_TRANSFER_COMMISSION
@@ -58,8 +56,8 @@ def get_money(message, amount: int) -> None:
         set_balance(to_user_id, get_balance(to_user_id) + credited_amount)
         set_balance(sender_id, sender_balance - amount)
 
-        bank_bot.reply_to(message, TEXT("transfer_success"))
-        bank_bot.send_message(to_user_id, TEXT("notification", "transfer"))
+        await message.answer(TEXT("transfer_success"))
+        await message.bot.send_message(to_user_id, TEXT("notification", "transfer"))
         log_event(
             "bank_transfer_completed",
             bot="bank",
@@ -74,29 +72,25 @@ def get_money(message, amount: int) -> None:
         )
 
     except ValueError:
-        bank_bot.reply_to(message, TEXT("err", "not_id"))
+        await message.answer(TEXT("err", "not_id"))
 
 
-def send_money(message) -> None:
-    try:
-        amount = int(message.text)
-        sender_balance = get_balance(message.from_user.id)
+async def send_money(message, amount: int) -> bool:
+    sender_balance = get_balance(message.from_user.id)
 
-        if sender_balance >= amount:
-            bank_bot.reply_to(message, TEXT("ask_for_id"))
-            bank_bot.register_next_step_handler(message, get_money, amount)
-            log_event(
-                "bank_transfer_initiated",
-                bot="bank",
-                user_id=message.from_user.id,
-                chat_id=message.chat.id,
-                metadata={"amount": amount},
-            )
-        else:
-            bank_bot.reply_to(message, TEXT("err", "not_enought_money"))
+    if sender_balance < amount:
+        await message.answer(TEXT("err", "not_enought_money"))
+        return False
 
-    except ValueError:
-        bank_bot.reply_to(message, TEXT("err", "not_int"))
+    await message.answer(TEXT("ask_for_id"))
+    log_event(
+        "bank_transfer_initiated",
+        bot="bank",
+        user_id=message.from_user.id,
+        chat_id=message.chat.id,
+        metadata={"amount": amount},
+    )
+    return True
 
 
 def bank_get_balance(message) -> float:

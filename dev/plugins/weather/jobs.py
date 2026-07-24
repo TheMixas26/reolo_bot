@@ -3,12 +3,12 @@ from __future__ import annotations
 from .service import WeatherAPIError, format_weather_message, get_weather_forecast
 
 
-def send_weather(context):
+async def send_weather(context):
     """
     Фоновая задача: получить прогноз и отправить его в чат.
     """
     logger = context.logger_factory("weather", persona="Тайлер Дерден")
-    tg = context.predlojka_bot
+    bot = context.predlojka_bot
     admin = context.admin_id
 
     try:
@@ -19,7 +19,7 @@ def send_weather(context):
             logger.say("Не задан chat_mishas_den в config", "error")
             return
 
-        forecast = get_weather_forecast(
+        forecast = await get_weather_forecast(
             latitude=latitude,
             longitude=longitude,
             start_hour=12,
@@ -28,7 +28,7 @@ def send_weather(context):
 
         weather_message = format_weather_message(forecast)
 
-        tg.send_message(chat_id, weather_message)
+        await bot.send_message(chat_id, weather_message)
         logger.say("Прогноз погоды успешно отправлен")
 
     except WeatherAPIError as e:
@@ -36,7 +36,7 @@ def send_weather(context):
 
         if admin:
             try:
-                tg.send_message(admin, f"❌ Не удалось получить прогноз погоды.\n{e}")
+                await bot.send_message(admin, f"❌ Не удалось получить прогноз погоды.\n{e}")
             except Exception:
                 pass
 
@@ -45,6 +45,6 @@ def send_weather(context):
 
         if admin:
             try:
-                tg.send_message(admin, f"❌ Критическая ошибка при отправке погоды: {str(e)[:100]}")
+                await bot.send_message(admin, f"❌ Критическая ошибка при отправке погоды: {str(e)[:100]}")
             except Exception:
                 pass

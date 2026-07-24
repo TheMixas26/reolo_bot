@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 import random
 
-from telebot import types
+from aiogram import types
 from varibles.dialogue_loader import TEXT
 
 from core.core_plugin.stats import log_event, log_command_usage
@@ -212,7 +212,8 @@ def _acknowledge_submission(message, content: SubmissionContent, user_name: str)
     else:
         text = thx_for_message(user_name, mes_type="?" if content.is_question else "!")
 
-    predlojka_bot.send_message(message.chat.id, text, reply_markup=q)
+    sender = getattr(plugin_context, "tg_adapter", None) or predlojka_bot
+    sender.send_message(message.chat.id, text, reply_markup=q)
     _maybe_send_advice(message, content)
 
 

@@ -1,4 +1,3 @@
-from config import predlojka_bot, chat_mishas_den, admin, channel
 from core.core_plugin.stats import log_event
 from .db import (
     upsert_birthday,
@@ -22,24 +21,24 @@ def _build_public_congratulation(name: str) -> str:
 
 
 
-def send_daily_birthdays(context):
+async def send_daily_birthdays(context):
     """Отправляет ежедневное уведомление в чат с днями рождений."""
     logger = context.logger_factory("birthdays", persona="Никитос")
     try:
-        text = format_birthdays_list(context)
-        predlojka_bot.send_message(chat_mishas_den, text)
-        predlojka_bot.send_message(admin, "Ежедневное уведомление с днями рождений направлено!")
+        text = await format_birthdays_list(context)
+        await context.predlojka_bot.send_message(context.chat_mishas_den, text)
+        await context.predlojka_bot.send_message(context.admin_id, "Ежедневное уведомление с днями рождений направлено!")
         log_event(
             "birthday_daily_sent",
             bot="predlojka",
-            chat_id=chat_mishas_den,
+            chat_id=context.chat_mishas_den,
             metadata={"count": 1},
         )
     except Exception as e:
         logger.say(f"Ошибка при отправке дней рождений: {e}", "error")
 
 
-def send_personal_birthday_notifications(context) -> None:
+async def send_personal_birthday_notifications(context) -> None:
     """
     Отправляет каждому пользователю личное уведомление о его дне рождения.
     """
@@ -54,7 +53,7 @@ def send_personal_birthday_notifications(context) -> None:
         day = b.get("day")
         month = b.get("month")
         days_left = days_until_birthday(day, month)
-        subscribers_list = format_birthdays_list(context, who_asking_flag="personal")
+        subscribers_list = await format_birthdays_list(context, who_asking_flag="personal")
 
         if days_left == 0:
             first_text = f"🎉 {name}, сегодня ваш день рождения! Поздравляю! 🎂"
@@ -64,7 +63,7 @@ def send_personal_birthday_notifications(context) -> None:
             continue  # в теории, пропуск некоректных дат. В теории.
         try:
             fin_text = f"{first_text}\n\n{subscribers_list}"
-            predlojka_bot.send_message(user_id, fin_text)
+            await context.predlojka_bot.send_message(user_id, fin_text)
             sent_count += 1
         except Exception as e:
             logger.say(f"Не удалось отправить личное уведомление для user_id={user_id}: {e}", "error")
@@ -98,12 +97,12 @@ def add_birthday(context, user_id, name, date_str) -> bool:
         logger.say(f"Ошибка при добавлении дня рождения: {e}", "error")
         return False
 
-def add_birthday_by_username(context, username, date_str, chat_id) -> tuple[bool, str | None]:
+async def add_birthday_by_username(context, username, date_str, chat_id) -> tuple[bool, str | None]:
     """Добавляет или обновляет день рождения пользователя по его имени пользователя в Telegram.
     date_str — строка в формате 'ДД.ММ' или 'ДД.ММ.ГГГГ'"""
     logger = context.logger_factory("birthdays", persona="Никитос")
     try:
-        user = predlojka_bot.get_chat_member(chat_id, username)
+        user = await context.predlojka_bot.get_chat_member(chat_id, username)
         first_name = user.user.first_name or ""
         last_name = user.user.last_name or ""
         name = f"{first_name} {last_name}".strip()
@@ -157,14 +156,14 @@ def plural_days(n: int) -> str:
     return "дней"
 
 
-def refresh_user_names(context, chat_id: int) -> None:
+async def refresh_user_names(context, chat_id: int) -> None:
     """Обновляет имена всех пользователей в базе, если они изменились."""
     logger = context.logger_factory("birthdays", persona="Никитос")
     users = get_all_birthdays()
     for user in users:
         user_id = user.get("user_id")
         try:
-            chat_member = predlojka_bot.get_chat_member(chat_id, user_id)
+            chat_member = await context.predlojka_bot.get_chat_member(chat_id, user_id)
             first_name = chat_member.user.first_name or ""
             last_name = chat_member.user.last_name or ""
             name = f"{first_name} {last_name}".strip()
@@ -175,10 +174,10 @@ def refresh_user_names(context, chat_id: int) -> None:
 
 
 
-def format_birthdays_list(context, who_asking_flag='channel') -> str:
+async def format_birthdays_list(context, who_asking_flag='channel') -> str:
     """Формирует текст с ближайшими днями рождений.
     who_asking_flag: 'channel' — для ежедневного уведомления, 'personal' — для личного сообщения пользователю."""
-    refresh_user_names(context, chat_mishas_den)
+    await refresh_user_names(context, context.chat_mishas_den)
     bdays = get_all_birthdays()
     if not bdays:
         return "Список дней рождений пуст."
@@ -204,7 +203,7 @@ def format_birthdays_list(context, who_asking_flag='channel') -> str:
 
 
 
-def send_birthday_congratulation(context) -> None:
+async def send_birthday_congratulation(context) -> None:
     """Отправляет поздравление с днем рождения пользователю."""
     logger = context.logger_factory("birthdays", persona="Никитос")
     bdays = get_all_birthdays()
@@ -221,13 +220,13 @@ def send_birthday_congratulation(context) -> None:
             congratulation_text_ch = _build_public_congratulation(name)
 
             try:
-                predlojka_bot.send_message(user_id, congratulation_text_dm)
+                await context.predlojka_bot.send_message(user_id, congratulation_text_dm)
                 dm_sent += 1
             except Exception as e:
                 logger.say(f"Ошибка личного поздравления для {user_id}: {e}", "error")
 
             try:
-                predlojka_bot.send_message(channel, congratulation_text_ch)
+                await context.predlojka_bot.send_message(context.channel, congratulation_text_ch)
                 channel_sent += 1
             except Exception as e:
                 logger.say(f"Ошибка публичного поздравления для {user_id}: {e}", "error")
@@ -242,14 +241,14 @@ def send_birthday_congratulation(context) -> None:
         log_event(
             "birthday_channel_congratulations_sent",
             bot="predlojka",
-            chat_id=channel,
+            chat_id=context.channel,
             metadata={"count": channel_sent},
         )
 
 
 
 def get_user_birthday(user_id):
-    get_birthday(user_id)
+    return get_birthday(user_id)
 
 
 def change_personal_notify(user_id, flag):

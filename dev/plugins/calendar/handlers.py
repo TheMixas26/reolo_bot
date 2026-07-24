@@ -1,17 +1,21 @@
+from aiogram import Router
+from aiogram.filters import Command
+from aiogram.types import Message
+
 from varibles.dialogue_loader import TEXT
 from core.core_plugin.stats import log_command_usage
 
 
-def register_handlers(context):
-    predlojka_bot = context.predlojka_bot
+def register_handlers(context) -> Router:
+    router = Router(name="calendar-plugin")
 
-    def imperial_today(message):
+    @router.message(Command("today"))
+    async def imperial_today(message: Message):
         log_command_usage("predlojka", "today", message)
         try:
             from .service import calendar
 
             today = calendar.today()
-
             short_date = calendar.short()
             full_date = calendar.full()
             event = today["event"] if "event" in today else "Сегодня нет праздников."
@@ -22,73 +26,47 @@ def register_handlers(context):
                 f"Полный формат: {full_date}\n"
                 f"Праздник: {event}"
             )
+            await message.reply(response)
+        except Exception as error:
+            context.logger.error(f"Ошибка в imperial_today: {error}")
+            await message.reply(TEXT("err", "get_today_date"))
 
-            predlojka_bot.reply_to(message, response)
-
-        except Exception as e:
-            context.logger.error(f"Ошибка в imperial_today: {e}")
-            predlojka_bot.reply_to(message, TEXT("err", "get_today_date"))
-
-    def imperial_nearest_event(message):
+    @router.message(Command("nearest_event"))
+    async def imperial_nearest_event(message: Message):
         log_command_usage("predlojka", "nearest_event", message)
         try:
             from .service import calendar
 
             events = calendar.next_events(3)
             response = "🎉 Ближайшие праздники Имперского календаря:\n\n"
-
-            for e in events:
+            for event in events:
                 response += (
-                    f"{e['day']:02d} {e['month']} — "
-                    f"{e['name']['title']} "
-                    f"(через {e['daysLeft']} дн.)\n"
+                    f"{event['day']:02d} {event['month']} — "
+                    f"{event['name']['title']} "
+                    f"(через {event['daysLeft']} дн.)\n"
                 )
+            await message.reply(response)
+        except Exception as error:
+            context.logger.error(f"Ошибка в imperial_nearest_event: {error}")
+            await message.reply(TEXT("err", "get_nearest_event"))
 
-            predlojka_bot.reply_to(message, response)
-
-        except Exception as e:
-            context.logger.error(f"Ошибка в imperial_nearest_event: {e}")
-            predlojka_bot.reply_to(
-                message,
-                TEXT("err", "get_nearest_event")
-            )
-
-    def imperial_all_events(message):
+    @router.message(Command("all_events"))
+    async def imperial_all_events(message: Message):
         log_command_usage("predlojka", "all_events", message)
         try:
             from .service import calendar
 
             events = calendar.all_events_with_countdown()
             response = "📜 Все праздники Имперского календаря:\n\n"
-
-            for e in events:
+            for event in events:
                 response += (
-                    f"{e['day']:02d} {e['month']} — "
-                    f"{e['name']['title']} "
-                    f"(через {e['daysLeft']} дн.)\n"
+                    f"{event['day']:02d} {event['month']} — "
+                    f"{event['name']['title']} "
+                    f"(через {event['daysLeft']} дн.)\n"
                 )
+            await message.reply(response)
+        except Exception as error:
+            context.logger.error(f"Ошибка в imperial_all_events: {error}")
+            await message.reply(TEXT("err", "get_all_events"))
 
-            predlojka_bot.reply_to(message, response)
-
-        except Exception as e:
-            context.logger.error(f"Ошибка в imperial_all_events: {e}")
-            predlojka_bot.reply_to(
-                message,
-                TEXT("err", "get_all_events")
-            )
-
-
-    predlojka_bot.register_message_handler(
-        imperial_today,
-        commands=['today']
-    )
-
-    predlojka_bot.register_message_handler(
-        imperial_nearest_event,
-        commands=['nearest_event']
-    )
-
-    predlojka_bot.register_message_handler(
-        imperial_all_events,
-        commands=['all_events']
-    )
+    return router
