@@ -24,6 +24,7 @@ from plugins.bank import BankPlugin
 from plugins.achievements import AchievementsPlugin
 from plugins.calendar import CalendarPlugin
 from plugins.cardgame import CardGamePlugin
+from plugins.sponsorship import SponsorshipPlugin
 
 try:
     from config import predlojka_bot, admin, channel, chat_mishas_den, bank_bot, rpg_bot, DEBUG_MODE, HIBERNATION
@@ -89,6 +90,7 @@ enabled_plugins = [
     AchievementsPlugin,
     CalendarPlugin,
     CardGamePlugin,
+    SponsorshipPlugin,
 ]
 
 load_texts(enabled_plugins)
