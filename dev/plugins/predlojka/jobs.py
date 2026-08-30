@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import threading
+import asyncio
 
 from core.core_plugin.stats import log_event
 from database.scheduled_posts_db import get_due_scheduled_posts, remove_scheduled_post
@@ -8,21 +8,21 @@ from database.scheduled_posts_db import get_due_scheduled_posts, remove_schedule
 from . import handlers
 
 
-scheduled_publish_lock = threading.Lock()
+scheduled_publish_lock = asyncio.Lock()
 
 
-def publish_due_scheduled_posts() -> None:
-    if not scheduled_publish_lock.acquire(blocking=False):
+async def publish_due_scheduled_posts() -> None:
+    if scheduled_publish_lock.locked():
         return
 
-    try:
+    async with scheduled_publish_lock:
         due_posts = get_due_scheduled_posts()
         for record in due_posts:
             try:
                 if record["content_type"] == "album":
-                    handlers._publish_album_payload(record["payload"])
+                    await handlers._publish_album_payload(record["payload"])
                 else:
-                    handlers._publish_payload(record["payload"])
+                    await handlers._publish_payload(record["payload"])
                 remove_scheduled_post(record["doc_id"])
                 log_event(
                     "scheduled_post_published",
@@ -36,7 +36,8 @@ def publish_due_scheduled_posts() -> None:
             except Exception as error:
                 handlers.logger.error(f"Не удалось опубликовать отложенную запись {record['doc_id']}: {error}")
                 try:
-                    handlers.predlojka_bot.send_message(
+                    await handlers._bot_call(
+                        "send_message",
                         handlers.admin,
                         "Не удалось опубликовать отложенную запись.\n"
                         f"ID задачи: {record['doc_id']}\n"
@@ -47,5 +48,3 @@ def publish_due_scheduled_posts() -> None:
                     handlers.logger.error(
                         f"Не удалось отправить уведомление админу о сбое отложенной записи {record['doc_id']}: {notify_error}"
                     )
-    finally:
-        scheduled_publish_lock.release()

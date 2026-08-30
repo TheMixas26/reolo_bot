@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from core.core_plugin.stats import log_event
 from .service import get_fallback_message
 
@@ -22,7 +24,7 @@ async def process_ai_message(context, message, content) -> None:
     log_event("ai_requested", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
 
     try:
-        full_text = context.ai_service.ask_ai(prompt_text, name)
+        full_text = await asyncio.to_thread(context.ai_service.ask_ai, prompt_text, name)
         if response_message is not None:
             await message.bot.edit_message_text(full_text, chat_id=message.chat.id, message_id=response_message.message_id)
         elif not content.ignore_reaction:

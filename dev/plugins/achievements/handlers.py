@@ -14,8 +14,9 @@ def register_handlers(context) -> Router:
 
     @router.message(Command("achievements"))
     async def list_achievements_command(message: Message):
+        # TODO: в texts.json
         log_command_usage("predlojka", "achievements", message)
-        achievements = get_all_achievements()
+        achievements = await get_all_achievements()
         if not achievements:
             await message.reply("Пока что никаких достижений нет. (;￣▽￣)")
         else:
@@ -28,47 +29,49 @@ def register_handlers(context) -> Router:
     async def get_achievements_command(message: Message):
         log_command_usage("predlojka", "me", message)
         user_id = message.from_user.id
-        achievements = get_user_achievements(user_id)
-        balance = get_balance(user_id)
+        achievements = await get_user_achievements(user_id)
+        balance = await get_balance(user_id)
 
         if achievements:
             achievements_text = "Ваши достижения:\n"
             for ach in achievements:
-                achievements_text += f"- {ach['name']}: {ach['description']} (получено: {ach['obtained_at']})\n"
+                achievements_text += f"- {ach['name']}: {ach['description']} (получено: {ach['obtained_at']})\n"   # TODO: в texts.json
         else:
             achievements_text = TEXT("no_achievements_yet")
 
-        balance_text = f"\nВаш баланс: {balance}" if balance is not None else "\nВаш баланс пока недоступен."
+        balance_text = f"\nВаш баланс: {balance}" if balance is not None else "\nВаш баланс пока недоступен."  # TODO: в texts.json
         await message.reply(
-            f"Здравствуйте, {message.from_user.first_name}! Рада, что вы заинтересовались собой!)\n\n"
+            f"Здравствуйте, {message.from_user.first_name}! Рада, что вы заинтересовались собой!)\n\n"    # TODO: в texts.json
             f"{achievements_text}\n\n{balance_text}"
         )
 
     @router.message(Command("add_achievement"))
     async def add_achievement_command(message: Message):
         if message.from_user.id != admin:
+            await message.reply(TEXT("not_an_admin"))
             return
         log_command_usage("predlojka", "add_achievement", message)
         try:
             command, data = message.text.split(" ", 1)
             code, name, description = [x.strip() for x in data.split("|", 2)]
-            add_achievement(code, name, description)
+            await add_achievement(code, name, description)
             await message.reply(TEXT("achievement_created").format(name=name, code=code))
             log_event("achievement_created", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"achievement_code": code})
         except ValueError:
-            await message.reply("Формат:\n/add_achievement code | name | description")
+            await message.reply("Формат:\n/add_achievement code | name | description")   # TODO: в texts.json
 
     @router.message(Command("grant_achievement"))
     async def grant_achievement_command(message: Message):
         if message.from_user.id != admin:
+            await message.reply(TEXT("not_an_admin"))
             return
         log_command_usage("predlojka", "grant_achievement", message)
         try:
             command, data = message.text.split(" ", 1)
             user_id_str, achievement_code = [x.strip() for x in data.split("|", 1)]
             user_id = int(user_id_str)
-            grant_achievement(user_id, achievement_code)
-            await message.reply(f"Успешно выдала Достижение '{achievement_code}' пользователю {user_id}!")
+            await grant_achievement(user_id, achievement_code)
+            await message.reply(f"Успешно выдала Достижение '{achievement_code}' пользователю {user_id}!")  # TODO: в texts.json
             log_event(
                 "achievement_granted_manual",
                 bot="predlojka",
@@ -77,19 +80,20 @@ def register_handlers(context) -> Router:
                 metadata={"target_user_id": user_id, "achievement_code": achievement_code},
             )
         except ValueError:
-            await message.reply("Формат:\n/grant_achievement user_id | achievement_code")
+            await message.reply("Формат:\n/grant_achievement user_id | achievement_code")  # TODO: в texts.json
 
     @router.message(Command("revoke_achievement"))
     async def revoke_achievement_command(message: Message):
         if message.from_user.id != admin:
+            await message.reply(TEXT("not_an_admin"))
             return
         log_command_usage("predlojka", "revoke_achievement", message)
         try:
             command, data = message.text.split(" ", 1)
             user_id_str, achievement_code = [x.strip() for x in data.split("|", 1)]
             user_id = int(user_id_str)
-            revoke_achievement(user_id, achievement_code)
-            await message.reply(f"Достижение '{achievement_code}' конфисковано у пользователя {user_id}!)))")
+            await revoke_achievement(user_id, achievement_code)
+            await message.reply(f"Достижение '{achievement_code}' конфисковано у пользователя {user_id}!)))") # TODO: в texts.json
             log_event(
                 "achievement_revoked",
                 bot="predlojka",
@@ -98,18 +102,19 @@ def register_handlers(context) -> Router:
                 metadata={"target_user_id": user_id, "achievement_code": achievement_code},
             )
         except ValueError:
-            await message.reply("Формат:\n/revoke_achievement user_id | achievement_code")
+            await message.reply("Формат:\n/revoke_achievement user_id | achievement_code")  # TODO: в texts.json
 
     @router.message(Command("add_conditions"))
     async def add_conditions_command(message: Message):
         if message.from_user.id != admin:
+            await message.reply(TEXT("not_an_admin"))
             return
         log_command_usage("predlojka", "add_conditions", message)
         try:
             command, data = message.text.split(" ", 1)
             achievement_code, conditions = [x.strip() for x in data.split("|", 1)]
-            update_achievement(achievement_code, conditions=conditions)
-            await message.reply(f"Обновила условия достижения '{achievement_code}' на '{conditions}'.")
+            await update_achievement(achievement_code, conditions=conditions)
+            await message.reply(f"Обновила условия достижения '{achievement_code}' на '{conditions}'.") # TODO: в texts.json
             log_event(
                 "achievement_conditions_updated",
                 bot="predlojka",

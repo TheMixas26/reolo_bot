@@ -1,21 +1,16 @@
-from .jobs import send_to_chat
-from varibles.dialogue_loader import TEXT
+from aiogram import Router
+from aiogram.filters import Command
+from aiogram.types import Message
 
 
-def register_handlers(context):
-    admin = context.admin_id
-    bot = context.predlojka_bot
+def register_handlers(context) -> Router:
+    router = Router(name="template-plugin")
+    admin_id = context.admin_id
 
-
-    def command_to_send_to_chat(message):
-        if message.from_user.id != admin:
+    @router.message(Command("template_test"))
+    async def handle_template_test(message: Message):
+        if message.from_user.id != admin_id:
             return
-        send_to_chat(context)
-        bot.reply_to(message, TEXT("testing_text"))
+        await message.reply("Шаблон плагина работает.")
 
-
-
-    bot.register_message_handler(
-        command_to_send_to_chat,
-        commands=['ur_command']
-    )
+    return router

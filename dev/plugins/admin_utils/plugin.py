@@ -16,7 +16,7 @@ class AdminUtilsPlugin:
     @staticmethod
     def setup(context):
         context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
-        logger = context.logger_factory("test", persona="Имя")
-        logger.say("It was an template!!..")
+        logger = context.logger_factory("admin_utils", persona="Варя")
+        logger.say("Админские штучки-дрючки присоеденены!")
         AdminUtilsPlugin.register_jobs(context)
         AdminUtilsPlugin.register_handlers(context)

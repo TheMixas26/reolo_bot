@@ -40,10 +40,11 @@ PROJECT_MODULE_PREFIXES = (
 )
 
 EXTERNAL_MODULE_PREFIXES = (
+    "aiogram",
+    "aiohttp",
     "apscheduler",
     "quickjs",
     "requests",
-    "telebot",
     "tinydb",
     "yandex_ai_studio_sdk",
 )
@@ -123,10 +124,17 @@ class FakeMessage:
         self.caption = text
         self.message_id = message_id
 
+    async def answer(self, text, **kwargs):
+        return FakeMessage(chat_id=self.chat.id, text=text)
+
+    async def reply(self, text, **kwargs):
+        return FakeMessage(chat_id=self.chat.id, text=text)
+
 
 class FakeBot:
-    def __init__(self, token: str = "stub-token"):
+    def __init__(self, token: str = "stub-token", *args, **kwargs):
         self.token = token
+        self.session = py_types.SimpleNamespace(close=lambda: None)
         self.message_handlers: list[tuple[object, tuple, dict]] = []
         self.callback_query_handlers: list[tuple[object, tuple, dict]] = []
 
@@ -206,9 +214,6 @@ class FakeBot:
     def set_my_commands(self, *args, **kwargs):
         return None
 
-    def infinity_polling(self, *args, **kwargs):
-        return None
-
     def __getattr__(self, name):
         def _method(*args, **kwargs):
             return None
@@ -220,9 +225,17 @@ class ReplyKeyboardRemove:
     pass
 
 
+class ReplyParameters:
+    def __init__(self, message_id: int):
+        self.message_id = message_id
+
+
 class ReplyKeyboardMarkup:
-    def __init__(self, row_width: int | None = None):
+    def __init__(self, row_width: int | None = None, keyboard=None, resize_keyboard: bool | None = None, **kwargs):
         self.row_width = row_width
+        self.keyboard = keyboard or []
+        self.resize_keyboard = resize_keyboard
+        self.kwargs = kwargs
         self.items: list[object] = []
 
     def add(self, *items):
@@ -235,7 +248,9 @@ class KeyboardButton:
 
 
 class InlineKeyboardMarkup:
-    def __init__(self):
+    def __init__(self, inline_keyboard=None, **kwargs):
+        self.inline_keyboard = inline_keyboard or []
+        self.kwargs = kwargs
         self.items: list[object] = []
 
     def add(self, *items):
@@ -271,6 +286,118 @@ class InputMediaVideo:
         self.media = media
         self.caption = caption
         self.parse_mode = parse_mode
+
+
+class FakeFilter:
+    def __and__(self, other):
+        return self
+
+    def __or__(self, other):
+        return self
+
+    def __invert__(self):
+        return self
+
+    async def __call__(self, *args, **kwargs):
+        return True
+
+
+class FakeMagicFilter(FakeFilter):
+    def __getattr__(self, name):
+        return self
+
+    def in_(self, values):
+        return self
+
+    def startswith(self, value):
+        return self
+
+
+class BaseFilter:
+    async def __call__(self, *args, **kwargs):
+        return True
+
+
+class Command(FakeFilter):
+    def __init__(self, *commands):
+        self.commands = commands
+
+
+class State:
+    pass
+
+
+class StatesGroup:
+    pass
+
+
+class FSMContext:
+    async def set_state(self, state):
+        self.state = state
+
+    async def clear(self):
+        self.state = None
+
+    async def update_data(self, **kwargs):
+        self.data = getattr(self, "data", {})
+        self.data.update(kwargs)
+
+    async def get_data(self):
+        return getattr(self, "data", {})
+
+    async def get_state(self):
+        return getattr(self, "state", None)
+
+
+class Router:
+    def __init__(self, name: str | None = None):
+        self.name = name
+        self.message_handlers = []
+        self.callback_query_handlers = []
+
+    @staticmethod
+    def _decorator(storage):
+        def _outer(*filters, **kwargs):
+            def _inner(func):
+                storage.append((func, filters, kwargs))
+                return func
+
+            return _inner
+
+        return _outer
+
+    @property
+    def message(self):
+        return self._decorator(self.message_handlers)
+
+    @property
+    def callback_query(self):
+        return self._decorator(self.callback_query_handlers)
+
+
+class Dispatcher:
+    def __init__(self, *args, **kwargs):
+        self.routers = []
+
+    def include_router(self, router):
+        self.routers.append(router)
+
+    async def start_polling(self, *args, **kwargs):
+        return None
+
+
+class MemoryStorage:
+    pass
+
+
+class DefaultBotProperties:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
+class FSInputFile:
+    def __init__(self, path):
+        self.path = path
 
 
 class FakeResponse:
@@ -397,27 +524,52 @@ class AIStudio:
 def _install_external_stubs() -> list[str]:
     installed_names: list[str] = []
 
-    telebot_module = py_types.ModuleType("telebot")
-    telebot_types = py_types.ModuleType("telebot.types")
-    telebot_formatting = py_types.ModuleType("telebot.formatting")
+    aiogram_module = py_types.ModuleType("aiogram")
+    aiogram_types = py_types.ModuleType("aiogram.types")
+    aiogram_filters = py_types.ModuleType("aiogram.filters")
+    aiogram_fsm = py_types.ModuleType("aiogram.fsm")
+    aiogram_fsm_context = py_types.ModuleType("aiogram.fsm.context")
+    aiogram_fsm_state = py_types.ModuleType("aiogram.fsm.state")
+    aiogram_fsm_storage = py_types.ModuleType("aiogram.fsm.storage")
+    aiogram_fsm_storage_memory = py_types.ModuleType("aiogram.fsm.storage.memory")
+    aiogram_client = py_types.ModuleType("aiogram.client")
+    aiogram_client_default = py_types.ModuleType("aiogram.client.default")
 
-    telebot_module.TeleBot = FakeBot
-    telebot_module.types = telebot_types
-    telebot_types.ReplyKeyboardRemove = ReplyKeyboardRemove
-    telebot_types.ReplyKeyboardMarkup = ReplyKeyboardMarkup
-    telebot_types.KeyboardButton = KeyboardButton
-    telebot_types.InlineKeyboardMarkup = InlineKeyboardMarkup
-    telebot_types.InlineKeyboardButton = InlineKeyboardButton
-    telebot_types.BotCommand = BotCommand
-    telebot_types.BotCommandScopeChat = BotCommandScopeChat
-    telebot_types.InputMediaPhoto = InputMediaPhoto
-    telebot_types.InputMediaVideo = InputMediaVideo
-    telebot_formatting.apply_html_entities = lambda text, entities=None, custom_subs=None: text or ""
+    aiogram_module.Bot = FakeBot
+    aiogram_module.Dispatcher = Dispatcher
+    aiogram_module.Router = Router
+    aiogram_module.F = FakeMagicFilter()
+    aiogram_module.types = aiogram_types
+    aiogram_types.Message = FakeMessage
+    aiogram_types.CallbackQuery = py_types.SimpleNamespace
+    aiogram_types.ReplyParameters = ReplyParameters
+    aiogram_types.ReplyKeyboardRemove = ReplyKeyboardRemove
+    aiogram_types.ReplyKeyboardMarkup = ReplyKeyboardMarkup
+    aiogram_types.KeyboardButton = KeyboardButton
+    aiogram_types.InlineKeyboardMarkup = InlineKeyboardMarkup
+    aiogram_types.InlineKeyboardButton = InlineKeyboardButton
+    aiogram_types.BotCommand = BotCommand
+    aiogram_types.BotCommandScopeChat = BotCommandScopeChat
+    aiogram_types.InputMediaPhoto = InputMediaPhoto
+    aiogram_types.InputMediaVideo = InputMediaVideo
+    aiogram_types.FSInputFile = FSInputFile
+    aiogram_filters.BaseFilter = BaseFilter
+    aiogram_filters.Command = Command
+    aiogram_fsm_context.FSMContext = FSMContext
+    aiogram_fsm_state.State = State
+    aiogram_fsm_state.StatesGroup = StatesGroup
+    aiogram_fsm_storage_memory.MemoryStorage = MemoryStorage
+    aiogram_client_default.DefaultBotProperties = DefaultBotProperties
 
     requests_module = py_types.ModuleType("requests")
     requests_module.get = lambda *args, **kwargs: FakeResponse()
     requests_module.post = lambda *args, **kwargs: FakeResponse({"response": []})
     requests_module.exceptions = py_types.SimpleNamespace(RequestException=RequestException)
+
+    aiohttp_module = py_types.ModuleType("aiohttp")
+    aiohttp_module.ClientError = Exception
+    aiohttp_module.ServerTimeoutError = Exception
+    aiohttp_module.ClientSession = object
 
     quickjs_module = py_types.ModuleType("quickjs")
     quickjs_module.Context = QuickJsContext
@@ -429,21 +581,32 @@ def _install_external_stubs() -> list[str]:
     apscheduler_module = py_types.ModuleType("apscheduler")
     apscheduler_schedulers = py_types.ModuleType("apscheduler.schedulers")
     apscheduler_background = py_types.ModuleType("apscheduler.schedulers.background")
+    apscheduler_asyncio = py_types.ModuleType("apscheduler.schedulers.asyncio")
     apscheduler_background.BackgroundScheduler = BackgroundScheduler
+    apscheduler_asyncio.AsyncIOScheduler = BackgroundScheduler
 
     yandex_module = py_types.ModuleType("yandex_ai_studio_sdk")
     yandex_module.AIStudio = AIStudio
 
     stub_modules = {
-        "telebot": telebot_module,
-        "telebot.types": telebot_types,
-        "telebot.formatting": telebot_formatting,
+        "aiogram": aiogram_module,
+        "aiogram.types": aiogram_types,
+        "aiogram.filters": aiogram_filters,
+        "aiogram.fsm": aiogram_fsm,
+        "aiogram.fsm.context": aiogram_fsm_context,
+        "aiogram.fsm.state": aiogram_fsm_state,
+        "aiogram.fsm.storage": aiogram_fsm_storage,
+        "aiogram.fsm.storage.memory": aiogram_fsm_storage_memory,
+        "aiogram.client": aiogram_client,
+        "aiogram.client.default": aiogram_client_default,
+        "aiohttp": aiohttp_module,
         "requests": requests_module,
         "quickjs": quickjs_module,
         "tinydb": tinydb_module,
         "apscheduler": apscheduler_module,
         "apscheduler.schedulers": apscheduler_schedulers,
         "apscheduler.schedulers.background": apscheduler_background,
+        "apscheduler.schedulers.asyncio": apscheduler_asyncio,
         "yandex_ai_studio_sdk": yandex_module,
     }
 

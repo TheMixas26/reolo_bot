@@ -27,7 +27,7 @@ async def send_daily_birthdays(context):
     try:
         text = await format_birthdays_list(context)
         await context.predlojka_bot.send_message(context.chat_mishas_den, text)
-        await context.predlojka_bot.send_message(context.admin_id, "Ежедневное уведомление с днями рождений направлено!")
+        await context.predlojka_bot.send_message(context.admin_id, TEXT("success/channel_notify"))
         log_event(
             "birthday_daily_sent",
             bot="predlojka",
@@ -43,7 +43,7 @@ async def send_personal_birthday_notifications(context) -> None:
     Отправляет каждому пользователю личное уведомление о его дне рождения.
     """
     logger = context.logger_factory("birthdays", persona="Никитос")
-    bdays = get_all_birthdays()
+    bdays = await get_all_birthdays()
     sent_count = 0
     for b in bdays:
         if not b.get("personal_notify"):
@@ -60,7 +60,7 @@ async def send_personal_birthday_notifications(context) -> None:
         elif days_left > 0:
             first_text = f"Здравствуйте, {name}!\nДо вашего дня рождения осталось {days_left} {plural_days(days_left)}."
         else:
-            continue  # в теории, пропуск некоректных дат. В теории.
+            continue  # в теории, пропуск некоректных дат. В теории.   # И на практике похоже тоже всё хорошо
         try:
             fin_text = f"{first_text}\n\n{subscribers_list}"
             await context.predlojka_bot.send_message(user_id, fin_text)
@@ -77,7 +77,7 @@ async def send_personal_birthday_notifications(context) -> None:
 
 
 
-def add_birthday(context, user_id, name, date_str) -> bool:
+async def add_birthday(context, user_id, name, date_str) -> bool:
     """
     Добавляет или обновляет день рождения пользователя.
     date_str — строка в формате 'ДД.ММ' или 'ДД.ММ.ГГГГ'
@@ -87,11 +87,11 @@ def add_birthday(context, user_id, name, date_str) -> bool:
         # Преобразуем дату
         if len(date_str.split(".")) == 2:
             bday = datetime.strptime(date_str, "%d.%m")
-            year = 2000  # фиктивный год
+            year = 2000  # фиктивный год   # почему-то мне смешно с этой строчки))) Может дело в том, что я очень хочу спать)
         else:
             bday = datetime.strptime(date_str, "%d.%m.%Y")
             year = bday.year
-        upsert_birthday(user_id=user_id, name=name, day=bday.day, month=bday.month, year=year)
+        await upsert_birthday(user_id=user_id, name=name, day=bday.day, month=bday.month, year=year)
         return True
     except Exception as e:
         logger.say(f"Ошибка при добавлении дня рождения: {e}", "error")
@@ -112,7 +112,7 @@ async def add_birthday_by_username(context, username, date_str, chat_id) -> tupl
         else:
             bday = datetime.strptime(date_str, "%d.%m.%Y")
             year = bday.year
-        upsert_birthday(
+        await upsert_birthday(
             user_id=user.user.id,
             name=name,
             username=username,
@@ -125,13 +125,13 @@ async def add_birthday_by_username(context, username, date_str, chat_id) -> tupl
         logger.say(f"Ошибка при добавлении дня рождения: {e}", "error")
         return False, None
 
-def get_all_birthdays() -> list[dict]:
+async def get_all_birthdays() -> list[dict]:
     """Получает список всех дней рождений из базы данных."""
-    return fetch_all_birthdays()
+    return await fetch_all_birthdays()
 
 def days_until_birthday(day, month) -> int:
     """Вычисляет количество дней до следующего дня рождения."""
-    today = datetime.now().date()  # только дата, без времени
+    today = datetime.now().date()  # только дата, без времени    # мне кто-нибудь скажет, зачем я это комментировал?...
     this_year = today.year
     try:
         bday = datetime(this_year, month, day).date()
@@ -159,7 +159,7 @@ def plural_days(n: int) -> str:
 async def refresh_user_names(context, chat_id: int) -> None:
     """Обновляет имена всех пользователей в базе, если они изменились."""
     logger = context.logger_factory("birthdays", persona="Никитос")
-    users = get_all_birthdays()
+    users = await get_all_birthdays()
     for user in users:
         user_id = user.get("user_id")
         try:
@@ -168,7 +168,7 @@ async def refresh_user_names(context, chat_id: int) -> None:
             last_name = chat_member.user.last_name or ""
             name = f"{first_name} {last_name}".strip()
             if user.get("name") != name:
-                update_birthday_name(user_id, name)
+                await update_birthday_name(user_id, name)
         except Exception as e:
             logger.say(f"Не удалось обновить имя для user_id={user_id}: {e}", "error")
 
@@ -178,7 +178,7 @@ async def format_birthdays_list(context, who_asking_flag='channel') -> str:
     """Формирует текст с ближайшими днями рождений.
     who_asking_flag: 'channel' — для ежедневного уведомления, 'personal' — для личного сообщения пользователю."""
     await refresh_user_names(context, context.chat_mishas_den)
-    bdays = get_all_birthdays()
+    bdays = await get_all_birthdays()
     if not bdays:
         return "Список дней рождений пуст."
     result = []
@@ -206,7 +206,7 @@ async def format_birthdays_list(context, who_asking_flag='channel') -> str:
 async def send_birthday_congratulation(context) -> None:
     """Отправляет поздравление с днем рождения пользователю."""
     logger = context.logger_factory("birthdays", persona="Никитос")
-    bdays = get_all_birthdays()
+    bdays = await get_all_birthdays()
     dm_sent = 0
     channel_sent = 0
     for b in bdays:
@@ -247,9 +247,9 @@ async def send_birthday_congratulation(context) -> None:
 
 
 
-def get_user_birthday(user_id):
-    return get_birthday(user_id)
+async def get_user_birthday(user_id):
+    return await get_birthday(user_id)
 
 
-def change_personal_notify(user_id, flag):
-    set_personal_notify(user_id, flag)
+async def change_personal_notify(user_id, flag):
+    await set_personal_notify(user_id, flag)

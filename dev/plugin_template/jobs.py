@@ -1,5 +1,6 @@
-def send_to_chat(context):
+def send_template_message(context):
     """
-    Какая-то фоновая задача
+    Пример фоновой задачи для шаблона плагина.
+    Замените на реальную логику вашего модуля.
     """
-    return 0
+    return None

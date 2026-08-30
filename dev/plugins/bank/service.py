@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pickle
 from pathlib import Path
 
 from core.core_plugin.stats import log_event
@@ -9,14 +8,14 @@ from database.sqlite_db import user_exists
 from .db import get_balance, set_balance
 from settings import BANK_TRANSFER_COMMISSION, CURRENCY_NAME_GENITIVE
 
-CURRENCY_INFO_PATH = Path("dev/varibles/currency_info.pickle")
+CURRENCY_INFO_PATH = Path("dev/varibles/currency_info.txt")
 
 
 def edit_currency_info(message, bats: int, rubles: int) -> None:
     """Обновляет данные о валюте в файле."""
     CURRENCY_INFO_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with CURRENCY_INFO_PATH.open("wb") as file:
-        pickle.dump([bats, rubles], file)
+    with CURRENCY_INFO_PATH.open("w") as f:
+        f.write(f"{bats}, {rubles}")
 
     log_event(
         "currency_info_updated",
@@ -31,8 +30,8 @@ def view_currency_info() -> str:
     if not CURRENCY_INFO_PATH.exists():
         return TEXT("err", "currency_not_set")
 
-    with CURRENCY_INFO_PATH.open("rb") as file:
-        currency_info = pickle.load(file)
+    with CURRENCY_INFO_PATH.open("r") as f:
+        currency_info = f.read().split(', ') 
 
     exchange_rate = currency_info[0] / currency_info[1]
     return f"{exchange_rate} {CURRENCY_NAME_GENITIVE.lower()} равняются 1 рублю"
@@ -41,20 +40,20 @@ def view_currency_info() -> str:
 async def get_money(message, amount: int) -> None:
     try:
         to_user_id = int(message.text)
-        if not user_exists(to_user_id):
+        if not await user_exists(to_user_id):
             await message.answer(TEXT("err", "no_bank_account"))
             return
 
         sender_id = message.from_user.id
-        sender_balance = get_balance(sender_id)
+        sender_balance = await get_balance(sender_id)
         if sender_balance < amount:
             await message.answer(TEXT("err", "not_enought_money"))
             return
 
         commission_amount = amount * BANK_TRANSFER_COMMISSION
         credited_amount = amount - commission_amount
-        set_balance(to_user_id, get_balance(to_user_id) + credited_amount)
-        set_balance(sender_id, sender_balance - amount)
+        await set_balance(to_user_id, await get_balance(to_user_id) + credited_amount)
+        await set_balance(sender_id, sender_balance - amount)
 
         await message.answer(TEXT("transfer_success"))
         await message.bot.send_message(to_user_id, TEXT("notification", "transfer"))
@@ -76,7 +75,7 @@ async def get_money(message, amount: int) -> None:
 
 
 async def send_money(message, amount: int) -> bool:
-    sender_balance = get_balance(message.from_user.id)
+    sender_balance = await get_balance(message.from_user.id)
 
     if sender_balance < amount:
         await message.answer(TEXT("err", "not_enought_money"))
@@ -93,5 +92,5 @@ async def send_money(message, amount: int) -> bool:
     return True
 
 
-def bank_get_balance(message) -> float:
-    return get_balance(message.from_user.id)
+async def bank_get_balance(message) -> float:
+    return await get_balance(message.from_user.id)

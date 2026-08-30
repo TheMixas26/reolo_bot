@@ -5,6 +5,7 @@ from typing import Optional
 
 import aiohttp
 
+from varibles.dialogue_loader import TEXT
 
 class WeatherAPIError(Exception):
     """Ошибка при получении или разборе погоды."""
@@ -14,19 +15,19 @@ class WeatherService:
     """Вспомогательные методы для погоды."""
 
     WEATHER_CODES = {
-        (0,): "☀️",        # Ясно
-        (1, 2, 3): "🌤️",  # Преимущественно ясно, переменная облачность
-        (45, 48): "🌫️",   # Туман
+        (0,): "☀️",          # Ясно      # чё тебе ясно?
+        (1, 2, 3): "🌤️",     # Преимущественно ясно, переменная облачность
+        (45, 48): "🌫️",      # Туман
         (51, 53, 55): "🌦️",  # Морось
-        (56, 57): "🌧️❄️",  # Ледяная морось
+        (56, 57): "🌧️❄️",    # Ледяная морось
         (61, 63, 65): "🌧️",  # Дождь
-        (66, 67): "🌧️❄️",  # Ледяной дождь
+        (66, 67): "🌧️❄️",    # Ледяной дождь
         (71, 73, 75): "❄️",  # Снег
-        (77,): "🌨️",      # Снежные зерна
+        (77,): "🌨️",         # Снежные зерна
         (80, 81, 82): "⛈️",  # Ливни
-        (85, 86): "🌨️",   # Снежные ливни
-        (95,): "⛈️",      # Гроза
-        (96, 99): "⛈️🧊",  # Гроза с градом
+        (85, 86): "🌨️",      # Снежные ливни
+        (95,): "⛈️",         # Гроза
+        (96, 99): "⛈️🧊",    # Гроза с градом
     }
 
     @classmethod
@@ -140,18 +141,18 @@ def format_weather_message(forecast_data: list[dict]) -> str:
     Отформатировать сообщение с прогнозом погоды.
     """
     if not forecast_data:
-        return "❌ Не удалось получить данные о погоде"
+        return TEXT("err", "no_forecast_data")
 
     current_time = datetime.now().strftime("%H:%M")
-    message = f"🌤️ Прогноз погоды на сегодня (обновлено {current_time}):\n\n"
+    message = TEXT("weather_message", "title", current_time=current_time)
 
     for forecast in forecast_data:
-        hour = forecast["hour"]
+        hour = "{:02d}".format(forecast["hour"])
         temp = round(forecast["temperature"])
         wind = round(forecast["wind_speed"], 1)
         icon = forecast["icon"]
 
-        message += f"🕐 {hour:02d}:00 - {icon} {temp}°C | 💨 {wind} м/с\n"
+        message += TEXT("weather_message", "hour_info", hour=hour, icon=icon, temp=temp)
 
     temps = [f["temperature"] for f in forecast_data]
     if temps:
@@ -159,8 +160,10 @@ def format_weather_message(forecast_data: list[dict]) -> str:
         min_temp = min(temps)
         avg_temp = round(sum(temps) / len(temps), 1)
 
-        message += f"\n📊 Сводка за период {forecast_data[0]['hour']:02d}:00-{forecast_data[-1]['hour']:02d}:00:\n"
-        message += f"• Макс: {max_temp}°C | Мин: {min_temp}°C | Средн: {avg_temp}°C"
+
+        # НЕ ДАЙ БОГ!!!! эта херь не будет работать
+        message += TEXT("weather_message", "period", start=f"{forecast_data[0]['hour']:02d}", final=f"{forecast_data[-1]['hour']:02d}")
+        message += TEXT("weather_message", "temp_info", max_temp=max_temp, min_temp=min_temp, avg_temp=avg_temp)
 
     return message
 

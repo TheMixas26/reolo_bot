@@ -24,6 +24,21 @@
     "err": {
         "bday_adding": [
             "У меня ошибка при добавлении. Надёжнее всего использовать эту команду reply-ответом на сообщение пользователя. Так я точно вас не подведу!"
-        ]
+        ],
+        "wrong_format": "Формат: /add_birthday ДД.ММ или /add_birthday ДД.ММ.ГГГГ",
+        
+        "wrong_reply_format": "Формат в reply: /add_birthday_by_username ДД.ММ",
+        
+        "wrong_format_by_us": "Формат: /add_birthday_by_username username ДД.ММ",
+
+        "date_problem": "Ошибка при добавлении. Вероятно, дело в дате!"
+    },
+
+    "success": {
+        "add_bday": "Ваш день рождения успешно добавлен!",
+
+        "add_bday_by_us": "День рождения для {name} добавлен!",
+
+        "channel_notify": "Ежедневное уведомление с днями рождений направлено!"
     }
 }

@@ -24,20 +24,21 @@ def register_handlers(context) -> Router:
     @router.message(Command("add_birthday_by_username"))
     async def handle_add_birthday_by_username(message: Message):
         if message.from_user.id != admin:
+            await message.reply(TEXT("not_an_admin"))
             return
         log_command_usage("predlojka", "add_birthday_by_username", message)
         try:
             parts = message.text.split()
             if message.reply_to_message:
                 if len(parts) != 2:
-                    await message.reply("Формат в reply: /add_birthday_by_username ДД.ММ")
+                    await message.reply(TEXT("err", "wrong_reply_format"))
                     return
                 target = message.reply_to_message.from_user
                 date_str = parts[1]
                 name = f"{target.first_name or ''} {target.last_name or ''}".strip()
-                ok = add_birthday(context, target.id, name, date_str)
+                ok = await add_birthday(context, target.id, name, date_str)
                 if ok:
-                    await message.reply(f"День рождения для {name} добавлен!")
+                    await message.reply(TEXT("success", "add_bday_by_us", name=name))
                     log_event(
                         "birthday_added_admin",
                         bot="predlojka",
@@ -46,18 +47,18 @@ def register_handlers(context) -> Router:
                         metadata={"target_user_id": target.id, "mode": "reply"},
                     )
                 else:
-                    await message.reply("Ошибка при добавлении. Вероятно, дело в дате!")
+                    await message.reply(TEXT("err", "date_problem"))
                 return
 
             if len(parts) < 3:
-                await message.reply("Формат: /add_birthday_by_username username ДД.ММ")
+                await message.reply(TEXT("err", "wrong_format_by_us"))
                 return
             username = parts[1].lstrip("@")
             date_str = parts[2]
             chat_id = context.config.chat_mishas_den
             ok, name = await add_birthday_by_username(context, username, date_str, chat_id)
             if ok:
-                await message.reply(f"День рождения для {name} добавлен!")
+                await message.reply(TEXT("success/add_bday_by_us", name=name))
                 log_event(
                     "birthday_added_admin",
                     bot="predlojka",
@@ -76,14 +77,14 @@ def register_handlers(context) -> Router:
         try:
             parts = message.text.split()
             if len(parts) != 2:
-                await message.reply("Формат: /add_birthday ДД.ММ или /add_birthday ДД.ММ.ГГГГ")
+                await message.reply(TEXT("err", "wrong_format"))
                 return
             date_str = parts[1]
             user_id = message.from_user.id
             name = f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip()
-            ok = add_birthday(context, user_id, name, date_str)
+            ok = await add_birthday(context, user_id, name, date_str)
             if ok:
-                await message.reply("Ваш день рождения успешно добавлен!")
+                await message.reply(TEXT("success", "add_bday"))
                 log_event("birthday_added_user", bot="predlojka", user_id=user_id, chat_id=message.chat.id)
             else:
                 await message.reply(TEXT("err", "check_date_format"))
@@ -94,10 +95,10 @@ def register_handlers(context) -> Router:
     async def handle_personal_notifications(message: Message):
         log_command_usage("predlojka", "personal_notifications", message)
         user_id = message.from_user.id
-        user = get_user_birthday(user_id)
+        user = await get_user_birthday(user_id)
         if user:
             current = user.get("personal_notify", False)
-            change_personal_notify(user_id, not current)
+            await change_personal_notify(user_id, not current)
             log_event(
                 "birthday_personal_notifications_toggled",
                 bot="predlojka",
@@ -112,6 +113,7 @@ def register_handlers(context) -> Router:
     @router.message(Command("send_personal_daily"))
     async def handle_send_personal_daily(message: Message):
         if message.from_user.id != admin:
+            await message.reply(TEXT("not_an_admin"))
             return
         log_command_usage("predlojka", "send_personal_daily", message)
         try:
@@ -122,6 +124,7 @@ def register_handlers(context) -> Router:
     @router.message(Command("send_daily"))
     async def handle_send_daily(message: Message):
         if message.from_user.id != admin:
+            await message.reply(TEXT("not_an_admin"))
             return
         log_command_usage("predlojka", "send_daily", message)
         try:

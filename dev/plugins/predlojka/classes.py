@@ -10,6 +10,7 @@ VK_USER_ID_OFFSET = 10**12
 
 TAG_ALIASES = {
     "#анон": "#anon",
+    "#аноним": "#anon",
     "#anon": "#anon",
     "#вопрос": "#question",
     "#question": "#question",

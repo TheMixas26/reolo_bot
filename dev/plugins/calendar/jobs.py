@@ -1,4 +1,6 @@
 async def check_imperial_events(context, calendar):
+    # TODO: texts.json
+
     today_info = calendar.today()
     event_today = today_info.get("event")
     if event_today:

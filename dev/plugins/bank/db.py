@@ -1,26 +1,26 @@
-from database.connection import _conn, _DB_LOCK
+from database.connection import execute, fetchrow
 
-def get_balance(user_id: int) -> float:
-    """Возвращает баланс пользователя. Если пользователь не найден, возвращает 0"""
-    with _DB_LOCK:
-        row = _conn.execute("SELECT balance FROM user_accounts WHERE user_id = ?", (user_id,)).fetchone()
+
+async def get_balance(user_id: int) -> float:
+    row = await fetchrow("SELECT balance FROM user_accounts WHERE user_id = $1", user_id)
     if row is None:
         return 0
     return row["balance"]
 
 
-def set_balance(user_id: int, balance: float) -> None:
-    """Устанавливает баланс пользователя. Если пользователь не найден... ничего не делает"""
-    with _DB_LOCK:
-        _conn.execute("UPDATE user_accounts SET balance = ? WHERE user_id = ?", (balance, user_id))
-        _conn.commit()
+async def set_balance(user_id: int, balance: float) -> None:
+    await execute("UPDATE user_accounts SET balance = $1 WHERE user_id = $2", balance, user_id)
 
 
-def add_balance(user_id: int, amount: float) -> float:
-    """Изменяет баланс пользователя на amount и возвращает новое значение."""
-    with _DB_LOCK:
-        current_balance = get_balance(user_id)
-        new_balance = current_balance + amount
-        _conn.execute("UPDATE user_accounts SET balance = ? WHERE user_id = ?", (new_balance, user_id))
-        _conn.commit()
-        return new_balance
+async def add_balance(user_id: int, amount: float) -> float:
+    row = await fetchrow(
+        """
+        UPDATE user_accounts
+        SET balance = balance + $1
+        WHERE user_id = $2
+        RETURNING balance
+        """,
+        amount,
+        user_id,
+    )
+    return row["balance"] if row else 0

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-import logging, random, time
+import asyncio
+import inspect
+import logging, random
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -45,19 +47,19 @@ def configure(context) -> None:
     BLOCKED_SUBMISSION_CHATS = {channel, channel_red, chat_mishas_den}
 
 
-def ensure_user_exists(user) -> None:
-    if not user_exists(user.id):
-        create_user_if_missing(user.id, user.first_name, user.last_name)
+async def ensure_user_exists(user) -> None:
+    if not await user_exists(user.id):
+        await create_user_if_missing(user.id, user.first_name, user.last_name)
 
 
 def storage_user_id_for_post(post: Post) -> int:
     return to_storage_user_id(post.origin.platform, post.origin.user_id)
 
 
-def ensure_post_author_exists(post: Post, *, first_name: str | None = None, last_name: str | None = None) -> int:
+async def ensure_post_author_exists(post: Post, *, first_name: str | None = None, last_name: str | None = None) -> int:
     storage_user_id = storage_user_id_for_post(post)
-    if not user_exists(storage_user_id):
-        create_user_if_missing(storage_user_id, first_name or post.author.display_name, last_name)
+    if not await user_exists(storage_user_id):
+        await create_user_if_missing(storage_user_id, first_name or post.author.display_name, last_name)
     return storage_user_id
 
 
@@ -314,25 +316,31 @@ def _build_platform_post_from_album(items: list, content: SubmissionContent) -> 
     return post
 
 
-def safe_delete_message(chat_id: int, message_id: int, max_retries: int = 3) -> bool:
+async def _maybe_await(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+async def safe_delete_message(chat_id: int, message_id: int, max_retries: int = 3) -> bool:
     for attempt in range(max_retries):
         try:
-            predlojka_bot.delete_message(chat_id, message_id)
+            await _maybe_await(predlojka_bot.delete_message(chat_id, message_id))
             return True
         except Exception as error:
             logger.error(f"Ошибка при удалении сообщения {message_id} (попытка {attempt + 1}): {error}")
-            time.sleep(0.4)
+            await asyncio.sleep(0.4)
     return False
 
 
-def safe_send_media_group(chat_id: int, media: list, max_retries: int = 3) -> list | None:
+async def safe_send_media_group(chat_id: int, media: list, max_retries: int = 3) -> list | None:
     for attempt in range(max_retries):
         try:
-            return predlojka_bot.send_media_group(chat_id, media)
+            return await _maybe_await(predlojka_bot.send_media_group(chat_id, media))
         except Exception as error:
             logger.error(f"Ошибка при отправке медиагруппы (попытка {attempt + 1}): {error}")
             if attempt < max_retries - 1:
-                time.sleep(1)
+                await asyncio.sleep(1)
     return None
 
 
@@ -412,28 +420,29 @@ def thx_for_message(user_name: str, mes_type: str) -> str:
 
     time = "day" if 6 <= datetime.now().hour < 23 else "night"
 
-    if mes_type == '!':
-        if FUN < 0.9:
+    match mes_type:
+        case '!':
+            if FUN < 0.9:
+                return TEXT("thx", time, "variants_v", name=user_name)
+            elif FUN >= 0.98:
+                return TEXT("thx", time, "podval_variants_v", name=user_name)
+            else:
+                return TEXT("thx", time, "secret_variants_v", name=user_name)
+
+        case '?':
+            return TEXT("thx", time, "variants_q", name=user_name)
+
+        case 'event':
+            return TEXT("thx", time, "events_variants")
+
+        case 'report':
+            return TEXT("thx", time, "report_variants")
+
+        case 'message':
+            return TEXT("thx", time, "message_variants")
+
+        case _:
             return TEXT("thx", time, "variants_v", name=user_name)
-        elif FUN >= 0.98:
-            return TEXT("thx", time, "podval_variants_v", name=user_name)
-        else:
-            return TEXT("thx", time, "secret_variants_v", name=user_name)
-
-    elif mes_type == '?':
-        return TEXT("thx", time, "variants_q", name=user_name)
-
-    elif mes_type == 'event':
-        return TEXT("thx", time, "events_variants")
-
-    elif mes_type == 'report':
-        return TEXT("thx", time, "report_variants")
-
-    elif mes_type == 'message':
-        return TEXT("thx", time, "message_variants")
-
-    else:
-        return TEXT("thx", time, "variants_v", name=user_name)
     
 
 def _resolve_telegram_reference(attachment: MediaAttachment) -> str | None:

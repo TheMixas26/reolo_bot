@@ -29,6 +29,9 @@ GameSession = DuelSession | TeamBattleSession
 _active_sessions: dict[int, GameSession] = {}
 
 
+# TODO: возможно, чтоит разбить на большее кол-во файлов, но однозначно texts.json
+
+
 def start_duel(
     player1_id: int,
     player1_name: str,

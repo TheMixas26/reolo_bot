@@ -7,6 +7,7 @@ from core.core_plugin.stats import log_command_usage
 
 
 def register_handlers(context) -> Router:
+    # TODO: texts.json
     router = Router(name="calendar-plugin")
 
     @router.message(Command("today"))

@@ -30,17 +30,18 @@ class PredlojkaPluginTests(unittest.TestCase):
             bot = FakeBot()
             context = _make_context(bot)
 
-            handlers_module.register_handlers(context)
+            router = handlers_module.register_handlers(context)
 
             self.assertIs(handlers_module.plugin_context, context)
-            self.assertIs(handlers_module.predlojka_telegram_adapter, context.tg_adapter)
+            self.assertIs(handlers_module.predlojka_bot, context.predlojka_bot)
             self.assertEqual(handlers_module.admin, context.admin_id)
-            self.assertEqual(len(bot.message_handlers), 3)
-            self.assertEqual(len(bot.callback_query_handlers), 10)
+            self.assertEqual(len(router.message_handlers), 6)
+            self.assertEqual(len(router.callback_query_handlers), 10)
 
-            handlers_module.register_handlers(context)
-            self.assertEqual(len(bot.message_handlers), 3)
-            self.assertEqual(len(bot.callback_query_handlers), 10)
+            same_router = handlers_module.register_handlers(context)
+            self.assertIs(same_router, router)
+            self.assertEqual(len(router.message_handlers), 6)
+            self.assertEqual(len(router.callback_query_handlers), 10)
 
     def test_submission_tags_are_parsed_as_control_and_public_tags(self):
         with isolated_project_imports():
@@ -53,6 +54,18 @@ class PredlojkaPluginTests(unittest.TestCase):
             self.assertTrue(content.is_anonymous)
             self.assertTrue(content.is_question)
             self.assertFalse(content.wants_ai)
+            self.assertEqual(content.route, "post")
+
+    def test_anonymous_and_question_tags_are_recognized(self):
+        with isolated_project_imports():
+            service_module = __import__("plugins.predlojka.service", fromlist=["_parse_submission_text"])
+
+            content = service_module._parse_submission_text("Привет #аноним #вопрос #important")
+
+            self.assertEqual(content.clean_text, "Привет")
+            self.assertEqual(content.public_tags, ["#important"])
+            self.assertTrue(content.is_anonymous)
+            self.assertTrue(content.is_question)
             self.assertEqual(content.route, "post")
 
     def test_route_tags_are_control_tags_not_public_tags(self):

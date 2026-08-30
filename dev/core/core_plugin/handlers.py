@@ -16,10 +16,10 @@ def register_handlers(context) -> Router:
     @router.message(Command("start"))
     async def start(message: Message):
         log_command_usage("predlojka", "start", message)
-        if user_exists(message.from_user.id):
+        if await user_exists(message.from_user.id):
             await message.reply(text="С возвращением!!! Ожидаем постов)")
         else:
-            create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
+            await create_user_if_missing(message.from_user.id, message.from_user.first_name, message.from_user.last_name)
             await message.reply(text=f"Добро пожаловать в бота \"{PROJECT_NAME}!\"")
             log_event("user_registered", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id)
 

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 
-LOG_DIR = Path("dev/analytics")
+LOG_DIR = Path("dev/varibles")
 EVENTS_LOG_PATH = LOG_DIR / "bot_events.jsonl"
 SUMMARY_LOG_PATH = LOG_DIR / "bot_stats_summary.txt"
 

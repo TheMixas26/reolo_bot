@@ -50,11 +50,7 @@ def load_texts(enabled_plugins=None):
     if CORE_TEXTS.exists():
         deep_merge(DIALOGS, load_json(CORE_TEXTS))
 
-    # Тексты плагинов
-    if enabled_plugins is None:
-        text_files = iter_plugin_texts()
-    else:
-        text_files = [plugin_text_path(plugin) for plugin in enabled_plugins]
+    text_files = iter_plugin_texts()
 
     for text_file in text_files:
         if text_file.exists():
@@ -62,11 +58,27 @@ def load_texts(enabled_plugins=None):
 
 
 def TEXT(*keys, **kwargs):
-    """Получить строку локализации."""
+    """Получить строку локализации.
+
+    Функция поддерживает:
+        TEXT("a", "b")
+        TEXT("a", "b/c")
+        TEXT("a/b/c")
+        TEXT("a/b", "c/d")
+    """
+
+    path = []
+
+    for key in keys:
+        if isinstance(key, str):
+            path.extend(part for part in key.split("/") if part)
+        else:
+            path.append(key)
+
     data = DIALOGS
 
     try:
-        for key in keys:
+        for key in path:
             data = data[key]
 
         if isinstance(data, list):
@@ -77,14 +89,19 @@ def TEXT(*keys, **kwargs):
 
         return data
 
-    except KeyError:
+    except (KeyError, TypeError):
         return f"[MISSING TEXT: {' -> '.join(map(str, keys))}]"
 
 
 load_texts()
 
 
-if __name__ == "__main__":
+def see_drama_script():
+    """Обожаю себя, функция бьуквально называется увидеть сценарий пьесы...."""
     load_texts()
     with open("all_texts.json", "w", encoding="utf-8") as file:
         json.dump(DIALOGS, file, ensure_ascii=False, indent=4)
+
+
+if __name__ == "__main__":
+    see_drama_script()

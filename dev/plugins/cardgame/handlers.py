@@ -539,7 +539,7 @@ def register_handlers(context):
 
     @rpg_router.message(Command("inv", "inventory"))
     async def inventory_command(message):
-        await log_command_usage("rpg", "inventory", message)
+        log_command_usage("rpg", "inventory", message)
         _ensure_user(message)
         inventory = get_inventory(message.from_user.id)
         if not inventory:
@@ -587,7 +587,7 @@ def register_handlers(context):
         )
         register_lobby(lobby)
         await show_lobby_invite(lobby)
-        await log_event(
+        log_event(
             "battle_challenge_created",
             bot="rpg",
             user_id=message.from_user.id,

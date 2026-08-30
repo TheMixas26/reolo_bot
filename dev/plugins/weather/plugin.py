@@ -12,8 +12,8 @@ class WeatherPlugin:
     @staticmethod
     def setup(context):
         context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
-        logger = context.logger_factory("birthdays", persona="Никитос")
-        logger.say("Доброе, выступаю на смену!")
+        logger = context.logger_factory("weather", persona="name")
+        logger.say("phrase")
         WeatherPlugin.register_jobs(context)
         router = register_handlers(context)
         context.include_router("predlojka", router)

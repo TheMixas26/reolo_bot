@@ -62,10 +62,10 @@ def register_handlers(context):
     async def hello_from_bank_bot(message: Message):
         log_command_usage("bank", "start", message)
 
-        if user_exists(message.from_user.id):
+        if await user_exists(message.from_user.id):
             await message.answer(f"С возвращением в {BANK_BOT_NAME}!")
         else:
-            create_user_if_missing(
+            await create_user_if_missing(
                 message.from_user.id,
                 message.from_user.first_name,
                 message.from_user.last_name
@@ -102,7 +102,7 @@ def register_handlers(context):
             log_event("bank_menu_selected", bot="bank", user_id=message.from_user.id,
                     chat_id=message.chat.id, metadata={"action": "balance"})
 
-            balance = bank_get_balance(message)
+            balance = await bank_get_balance(message)
             await message.answer(
                 f"Ваш баланс: {balance} {CURRENCY_NAME_GENITIVE}\n"
                 f"Ваш id: <code>{message.from_user.id}</code>",
