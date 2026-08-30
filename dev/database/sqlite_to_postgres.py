@@ -36,6 +36,19 @@ TABLES = [
 ]
 
 OPTIONAL_TABLES = {"scheduled_posts"}
+UPSERT_KEYS_BY_TABLE = {
+    "user_accounts": ("user_id",),
+    "birthdays": ("user_id",),
+    "rpg_players": ("user_id",),
+    "achievements": ("id",),
+    "user_achievements": ("user_id", "achievement_id"),
+    "cards": ("id",),
+    "card_packs": ("id",),
+    "inventory": ("user_id", "card_id"),
+    "card_events": ("id",),
+    "card_event_rewards": ("event_id", "user_id"),
+    "scheduled_posts": ("id",),
+}
 
 CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS user_accounts (
@@ -162,6 +175,10 @@ def resolve_postgres_dsn(explicit: str | None) -> str:
     return "postgresql://postgres:postgres@localhost:5432/reolo_bot"
 
 
+def quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
 def normalize_sqlite_value(value: Any, column_name: str | None = None, column_type: str | None = None) -> Any:
     if value is None:
         return None
@@ -202,7 +219,7 @@ async def migrate_table(postgres_conn: asyncpg.Connection, sqlite_conn: sqlite3.
         row[1]: (row[2] or "").upper()
         for row in sqlite_conn.execute(f'PRAGMA table_info("{table_name}")').fetchall()
     }
-    normalized_columns = [f'"{name}"' if name == "desc" else name for name in columns]
+    pk_columns = UPSERT_KEYS_BY_TABLE.get(table_name, (columns[0],)) if columns else ()
     normalized_rows = []
 
     for row in rows:
@@ -211,11 +228,23 @@ async def migrate_table(postgres_conn: asyncpg.Connection, sqlite_conn: sqlite3.
             normalized_row.append(normalize_sqlite_value(value, col_name, column_types.get(col_name)))
         normalized_rows.append(tuple(normalized_row))
 
-    await postgres_conn.copy_records_to_table(
-        table_name,
-        records=normalized_rows,
-        columns=normalized_columns,
+    quoted_columns = [quote_ident(col) for col in columns]
+    placeholder_list = ", ".join(f"${index}" for index in range(1, len(columns) + 1))
+    insert_columns_sql = ", ".join(quoted_columns)
+    conflict_columns_sql = ", ".join(quote_ident(col) for col in pk_columns)
+    update_columns = [
+        f"{quote_ident(col)} = EXCLUDED.{quote_ident(col)}"
+        for col in columns
+        if col not in pk_columns
+    ]
+    if not update_columns:
+        update_columns = [f"{quote_ident(columns[0])} = EXCLUDED.{quote_ident(columns[0])}"]
+    query = (
+        f"INSERT INTO {quote_ident(table_name)} ({insert_columns_sql}) "
+        f"VALUES ({placeholder_list}) "
+        f"ON CONFLICT ({conflict_columns_sql}) DO UPDATE SET {', '.join(update_columns)}"
     )
+    await postgres_conn.executemany(query, normalized_rows)
     return len(normalized_rows)
 
 
