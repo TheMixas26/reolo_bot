@@ -162,7 +162,7 @@ def resolve_postgres_dsn(explicit: str | None) -> str:
     return "postgresql://postgres:postgres@localhost:5432/reolo_bot"
 
 
-def normalize_sqlite_value(value: Any) -> Any:
+def normalize_sqlite_value(value: Any, column_name: str | None = None, column_type: str | None = None) -> Any:
     if value is None:
         return None
 
@@ -171,6 +171,22 @@ def normalize_sqlite_value(value: Any) -> Any:
 
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
+
+    type_name = (column_type or "").upper()
+    boolish_name = bool(column_name) and (
+        column_name.lower().startswith("is_")
+        or column_name.lower() in {"personal_notify", "is_active", "is_question", "is_anonymous"}
+    )
+
+    if isinstance(value, int) and ("BOOL" in type_name or boolish_name):
+        return bool(value)
+
+    if isinstance(value, str) and ("BOOL" in type_name or boolish_name):
+        lowered = value.strip().lower()
+        if lowered in {"0", "1"}:
+            return lowered == "1"
+        if lowered in {"true", "false"}:
+            return lowered == "true"
 
     return value
 
@@ -182,13 +198,17 @@ async def migrate_table(postgres_conn: asyncpg.Connection, sqlite_conn: sqlite3.
         return 0
 
     columns = [description[0] for description in cursor.description]
+    column_types = {
+        row[1]: (row[2] or "").upper()
+        for row in sqlite_conn.execute(f'PRAGMA table_info("{table_name}")').fetchall()
+    }
     normalized_columns = [f'"{name}"' if name == "desc" else name for name in columns]
     normalized_rows = []
 
     for row in rows:
         normalized_row = []
-        for value in row:
-            normalized_row.append(normalize_sqlite_value(value))
+        for value, col_name in zip(row, columns):
+            normalized_row.append(normalize_sqlite_value(value, col_name, column_types.get(col_name)))
         normalized_rows.append(tuple(normalized_row))
 
     await postgres_conn.copy_records_to_table(
