@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import types
 import unittest
-from unittest.mock import patch
+import asyncio
+from unittest.mock import AsyncMock, patch
 
 from tests.support import FakeBot, isolated_project_imports
 
@@ -53,11 +54,11 @@ class SubmissionAcknowledgementTests(unittest.TestCase):
             with self.subTest(route=route, is_question=is_question):
                 with patch.object(handlers_module, "thx_for_message", return_value="ACK") as thx_mock, patch.object(
                     adapter, "send_message", create=True
-                ) as send_mock, patch.object(handlers_module, "_maybe_send_advice") as advice_mock:
-                    handlers_module._acknowledge_submission(message, content, "Test User")
+                ) as send_mock, patch.object(handlers_module, "_maybe_send_advice", new_callable=AsyncMock) as advice_mock:
+                    asyncio.run(handlers_module._acknowledge_submission(message, content, "Test User"))
                     thx_mock.assert_called_once_with("Test User", mes_type=expected_mes_type)
                     send_mock.assert_called_once_with(message.chat.id, "ACK", reply_markup=handlers_module.q)
-                    advice_mock.assert_called_once_with(message, content)
+                    advice_mock.assert_awaited_once_with(message, content)
 
     def test_acknowledge_submission_skips_feedback_when_reaction_is_ignored(self):
         with isolated_project_imports():
@@ -78,8 +79,8 @@ class SubmissionAcknowledgementTests(unittest.TestCase):
 
         with patch.object(handlers_module, "thx_for_message") as thx_mock, patch.object(
             adapter, "send_message", create=True
-        ) as send_mock, patch.object(handlers_module, "_maybe_send_advice") as advice_mock:
-            handlers_module._acknowledge_submission(message, content, "Test User")
+        ) as send_mock, patch.object(handlers_module, "_maybe_send_advice", new_callable=AsyncMock) as advice_mock:
+            asyncio.run(handlers_module._acknowledge_submission(message, content, "Test User"))
             thx_mock.assert_not_called()
             send_mock.assert_not_called()
             advice_mock.assert_not_called()

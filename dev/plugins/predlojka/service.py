@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-import logging, random, time
+import asyncio
+import inspect
+import logging, random
 from dataclasses import dataclass
 from datetime import datetime
 
 from database.sqlite_db import create_user_if_missing, user_exists
-from posting.models import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin
-from posting.platform_ids import to_storage_user_id
-from posting.services import PostParser
+from .classes import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin, PostFactory, PostFormatter
+from aiogram import types
+from .classes import to_storage_user_id, PostParser
 from varibles.dialogue_loader import TEXT
-
+from html import escape
 
 logger = logging.getLogger(__name__)
 
-predlojka_telegram_adapter = None
-telegram_adapter = None
+
+def apply_html_entities(text, entities=None, custom_subs=None):
+    return escape(text or "")
+
+predlojka_bot = None
 channel = None
 channel_red = None
 chat_mishas_den = None
@@ -33,29 +38,28 @@ class SubmissionContent:
 
 
 def configure(context) -> None:
-    global predlojka_telegram_adapter, telegram_adapter, channel, channel_red, chat_mishas_den, BLOCKED_SUBMISSION_CHATS
+    global predlojka_bot, channel, channel_red, chat_mishas_den, BLOCKED_SUBMISSION_CHATS
 
-    predlojka_telegram_adapter = context.tg_adapter
-    telegram_adapter = context.tg_adapter
+    predlojka_bot = context.predlojka_bot
     channel = context.config.channel
     channel_red = context.config.channel_red
     chat_mishas_den = context.config.chat_mishas_den
     BLOCKED_SUBMISSION_CHATS = {channel, channel_red, chat_mishas_den}
 
 
-def ensure_user_exists(user) -> None:
-    if not user_exists(user.id):
-        create_user_if_missing(user.id, user.first_name, user.last_name)
+async def ensure_user_exists(user) -> None:
+    if not await user_exists(user.id):
+        await create_user_if_missing(user.id, user.first_name, user.last_name)
 
 
 def storage_user_id_for_post(post: Post) -> int:
     return to_storage_user_id(post.origin.platform, post.origin.user_id)
 
 
-def ensure_post_author_exists(post: Post, *, first_name: str | None = None, last_name: str | None = None) -> int:
+async def ensure_post_author_exists(post: Post, *, first_name: str | None = None, last_name: str | None = None) -> int:
     storage_user_id = storage_user_id_for_post(post)
-    if not user_exists(storage_user_id):
-        create_user_if_missing(storage_user_id, first_name or post.author.display_name, last_name)
+    if not await user_exists(storage_user_id):
+        await create_user_if_missing(storage_user_id, first_name or post.author.display_name, last_name)
     return storage_user_id
 
 
@@ -92,6 +96,173 @@ def _serialize_post(post: Post) -> dict:
     }
 
 
+def create_post_from_message(message, *, append_author_signature: bool = True) -> Post:
+        attachments: list[MediaAttachment] = []
+        content_type = getattr(message, "content_type", "text")
+
+        if content_type == "sticker":
+            attachments.append(MediaAttachment(media_type=MediaType.STICKER, references={Platform.TELEGRAM: message.sticker.file_id}))
+        elif content_type == "photo":
+            attachments.append(MediaAttachment(media_type=MediaType.PHOTO, references={Platform.TELEGRAM: message.photo[-1].file_id}))
+        elif content_type == "video":
+            attachments.append(MediaAttachment(media_type=MediaType.VIDEO, references={Platform.TELEGRAM: message.video.file_id}))
+        elif content_type == "document":
+            attachments.append(
+                MediaAttachment(
+                    media_type=MediaType.DOCUMENT,
+                    references={Platform.TELEGRAM: message.document.file_id},
+                    file_name=getattr(message.document, "file_name", None),
+                )
+            )
+        elif content_type == "audio":
+            attachments.append(
+                MediaAttachment(
+                    media_type=MediaType.AUDIO,
+                    references={Platform.TELEGRAM: message.audio.file_id},
+                    file_name=getattr(message.audio, "file_name", None),
+                )
+            )
+        elif content_type == "voice":
+            attachments.append(MediaAttachment(media_type=MediaType.VOICE, references={Platform.TELEGRAM: message.voice.file_id}))
+
+        raw_text, entities = _resolve_text_payload(message)
+        formatted_text, text_parse_mode = _build_formatted_text(raw_text, entities)
+        author = PostAuthor(
+            user_id=message.from_user.id,
+            display_name=build_display_name(message.from_user),
+            username=getattr(message.from_user, "username", None),
+        )
+        origin = PostOrigin(
+            platform=Platform.TELEGRAM,
+            chat_id=message.chat.id,
+            user_id=message.from_user.id,
+            message_id=message.message_id,
+            media_group_id=getattr(message, "media_group_id", None),
+        )
+        post = PostFactory.create_submission_post(
+            author=author,
+            origin=origin,
+            raw_text=raw_text,
+            attachments=attachments,
+            append_author_signature=append_author_signature,
+        )
+        post.formatted_text = formatted_text
+        post.text_parse_mode = text_parse_mode
+        return post
+
+def create_post_from_media_group(self, messages: list) -> Post:
+        if not messages:
+            raise ValueError("Пустая медиагруппа")
+
+        attachments: list[MediaAttachment] = []
+        for message in messages:
+            if message.content_type == "photo":
+                attachments.append(MediaAttachment(media_type=MediaType.PHOTO, references={Platform.TELEGRAM: message.photo[-1].file_id}))
+            elif message.content_type == "video":
+                attachments.append(MediaAttachment(media_type=MediaType.VIDEO, references={Platform.TELEGRAM: message.video.file_id}))
+
+        first_message = messages[0]
+        raw_text = "\n".join(item.caption for item in messages if item.caption)
+        formatted_source, _ = self._resolve_album_text_payload(messages)
+        formatted_text = self._strip_submission_tags_from_formatted_text(formatted_source) if formatted_source else None
+        text_parse_mode = "HTML" if formatted_text else None
+        author = PostAuthor(
+            user_id=first_message.from_user.id,
+            display_name=self.build_display_name(first_message.from_user),
+            username=getattr(first_message.from_user, "username", None),
+        )
+        origin = PostOrigin(
+            platform=Platform.TELEGRAM,
+            chat_id=first_message.chat.id,
+            user_id=first_message.from_user.id,
+            message_id=first_message.message_id,
+            media_group_id=str(first_message.media_group_id),
+        )
+        post = PostFactory.create_submission_post(author=author, origin=origin, raw_text=raw_text, attachments=attachments)
+        post.formatted_text = formatted_text
+        post.text_parse_mode = text_parse_mode
+        return post    
+
+
+
+def _build_formatted_text(text: str | None, entities: list | None) -> tuple[str | None, str | None]:
+        if not text:
+            return None, None
+        formatted = apply_html_entities(text, entities, None)
+        cleaned = _strip_submission_tags_from_formatted_text(formatted)
+        if not cleaned:
+            return None, None
+        return cleaned, "HTML"
+
+
+def _resolve_text_payload(message) -> tuple[str | None, list | None]:
+    content_type = getattr(message, "content_type", "text")
+    if content_type == "text":
+        return message.text, getattr(message, "entities", None)
+    return message.caption, getattr(message, "caption_entities", None)
+
+
+def _resolve_album_text_payload(messages: list) -> tuple[str | None, list | None]:
+    formatted_chunks: list[str] = []
+    for message in messages:
+        caption = getattr(message, "caption", None)
+        if not caption:
+            continue
+        formatted_chunks.append(
+            apply_html_entities(caption, getattr(message, "caption_entities", None), None)
+        )
+    if not formatted_chunks:
+        return None, None
+    return "\n".join(formatted_chunks), []
+
+def _resolve_rendered_text(post: Post, rendered_text: str, parse_mode: str | None) -> tuple[str, str | None]:
+    if parse_mode is not None:
+        return rendered_text, parse_mode
+    if post.text_parse_mode == "HTML":
+        return PostFormatter.compose_publish_html(post), "HTML"
+    return rendered_text, None
+
+def build_display_name(user) -> str:
+    first_name = user.first_name or ""
+    last_name = user.last_name or ""
+    full_name = f"{first_name} {last_name}".strip()
+    if full_name:
+        return full_name
+    if getattr(user, "username", None):
+        return f"@{user.username}"
+    return f"id{user.id}"
+
+
+
+
+
+
+
+def _strip_submission_tags_from_formatted_text(formatted_text: str) -> str:
+        if not formatted_text:
+            return ""
+        parts: list[str] = []
+        last_index = 0
+        previous_tag_end: int | None = None
+        for match in PostParser.TAG_PATTERN.finditer(formatted_text):
+            start, end = match.span()
+            previous_char = formatted_text[start - 1] if start > 0 else ""
+            starts_new_tag = (
+                start == 0
+                or not (previous_char.isalnum() or previous_char == "_")
+                or previous_tag_end == start
+            )
+            if not starts_new_tag:
+                previous_tag_end = None
+                continue
+            parts.append(formatted_text[last_index:start])
+            last_index = end
+            previous_tag_end = end
+        parts.append(formatted_text[last_index:])
+        return PostParser._normalize_submission_text("".join(parts))
+
+
+
 def _deserialize_post(data: dict) -> Post:
     return Post(
         author=PostAuthor(**data["author"]),
@@ -122,10 +293,10 @@ def _deserialize_post(data: dict) -> Post:
 
 
 def _build_platform_post_from_message(message, content: SubmissionContent) -> Post:
-    post = telegram_adapter.create_post_from_message(message)
+    post = create_post_from_message(message)
     post.text = content.clean_text
     if post.formatted_text:
-        post.formatted_text = telegram_adapter._strip_submission_tags_from_formatted_text(post.formatted_text)
+        post.formatted_text = _strip_submission_tags_from_formatted_text(post.formatted_text)
     post.public_tags = list(content.public_tags)
     post.is_anonymous = content.is_anonymous
     post.is_question = content.is_question
@@ -134,10 +305,10 @@ def _build_platform_post_from_message(message, content: SubmissionContent) -> Po
 
 
 def _build_platform_post_from_album(items: list, content: SubmissionContent) -> Post:
-    post = telegram_adapter.create_post_from_media_group(items)
+    post = create_post_from_media_group(items)
     post.text = content.clean_text
     if post.formatted_text:
-        post.formatted_text = telegram_adapter._strip_submission_tags_from_formatted_text(post.formatted_text)
+        post.formatted_text = _strip_submission_tags_from_formatted_text(post.formatted_text)
     post.public_tags = list(content.public_tags)
     post.is_anonymous = content.is_anonymous
     post.is_question = content.is_question
@@ -145,25 +316,31 @@ def _build_platform_post_from_album(items: list, content: SubmissionContent) -> 
     return post
 
 
-def safe_delete_message(chat_id: int, message_id: int, max_retries: int = 3) -> bool:
+async def _maybe_await(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+async def safe_delete_message(chat_id: int, message_id: int, max_retries: int = 3) -> bool:
     for attempt in range(max_retries):
         try:
-            predlojka_telegram_adapter.delete_message(chat_id, message_id)
+            await _maybe_await(predlojka_bot.delete_message(chat_id, message_id))
             return True
         except Exception as error:
             logger.error(f"Ошибка при удалении сообщения {message_id} (попытка {attempt + 1}): {error}")
-            time.sleep(0.4)
+            await asyncio.sleep(0.4)
     return False
 
 
-def safe_send_media_group(chat_id: int, media: list, max_retries: int = 3) -> list | None:
+async def safe_send_media_group(chat_id: int, media: list, max_retries: int = 3) -> list | None:
     for attempt in range(max_retries):
         try:
-            return predlojka_telegram_adapter.send_media_group(chat_id, media)
+            return await _maybe_await(predlojka_bot.send_media_group(chat_id, media))
         except Exception as error:
             logger.error(f"Ошибка при отправке медиагруппы (попытка {attempt + 1}): {error}")
             if attempt < max_retries - 1:
-                time.sleep(1)
+                await asyncio.sleep(1)
     return None
 
 
@@ -243,25 +420,49 @@ def thx_for_message(user_name: str, mes_type: str) -> str:
 
     time = "day" if 6 <= datetime.now().hour < 23 else "night"
 
-    if mes_type == '!':
-        if FUN < 0.9:
+    match mes_type:
+        case '!':
+            if FUN < 0.9:
+                return TEXT("thx", time, "variants_v", name=user_name)
+            elif FUN >= 0.98:
+                return TEXT("thx", time, "podval_variants_v", name=user_name)
+            else:
+                return TEXT("thx", time, "secret_variants_v", name=user_name)
+
+        case '?':
+            return TEXT("thx", time, "variants_q", name=user_name)
+
+        case 'event':
+            return TEXT("thx", time, "events_variants")
+
+        case 'report':
+            return TEXT("thx", time, "report_variants")
+
+        case 'message':
+            return TEXT("thx", time, "message_variants")
+
+        case _:
             return TEXT("thx", time, "variants_v", name=user_name)
-        elif FUN >= 0.98:
-            return TEXT("thx", time, "podval_variants_v", name=user_name)
-        else:
-            return TEXT("thx", time, "secret_variants_v", name=user_name)
+    
 
-    elif mes_type == '?':
-        return TEXT("thx", time, "variants_q", name=user_name)
+def _resolve_telegram_reference(attachment: MediaAttachment) -> str | None:
+        telegram_ref = attachment.get_reference(Platform.TELEGRAM)
+        if telegram_ref:
+            return telegram_ref
+        vk_ref = attachment.get_reference(Platform.VK)
+        if vk_ref and vk_ref.startswith(("http://", "https://")):
+            return vk_ref
+        return None
 
-    elif mes_type == 'event':
-        return TEXT("thx", time, "events_variants")
-
-    elif mes_type == 'report':
-        return TEXT("thx", time, "report_variants")
-
-    elif mes_type == 'message':
-        return TEXT("thx", time, "message_variants")
-
-    else:
-        return TEXT("thx", time, "variants_v", name=user_name)
+def _build_album_media(self, post: Post, rendered_text: str, parse_mode: str | None = None) -> list:
+    media = []
+    for index, attachment in enumerate(post.attachments):
+        file_id = self._resolve_telegram_reference(attachment)
+        if not file_id:
+            continue
+        caption = rendered_text if index == 0 else None
+        if attachment.media_type == MediaType.PHOTO:
+            media.append(types.InputMediaPhoto(file_id, caption=caption, parse_mode=parse_mode))
+        elif attachment.media_type == MediaType.VIDEO:
+            media.append(types.InputMediaVideo(file_id, caption=caption, parse_mode=parse_mode))
+    return media

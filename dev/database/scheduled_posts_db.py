@@ -1,18 +1,10 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
-from pathlib import Path
-from threading import Lock
 
-from tinydb import Query, TinyDB
+from .connection import execute, fetch, fetchval
 
-DB_PATH = Path(__file__).resolve().parent / "posts.json"
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-_db = TinyDB(DB_PATH, ensure_ascii=False, indent=2)
-_table = _db.table("scheduled_posts")
-_query = Query()
-_lock = Lock()
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -23,13 +15,24 @@ def serialize_datetime(value: datetime | None) -> str | None:
     return value.strftime(DATETIME_FORMAT)
 
 
-def deserialize_datetime(value: str | None) -> datetime | None:
+def deserialize_datetime(value: str | datetime | None) -> datetime | None:
     if not value:
         return None
+    if isinstance(value, datetime):
+        return value
     return datetime.strptime(value, DATETIME_FORMAT)
 
 
-def create_scheduled_post(
+def _row_to_record(row) -> dict:
+    record = dict(row)
+    record["doc_id"] = record.pop("id")
+    payload = record.get("payload")
+    if isinstance(payload, str):
+        record["payload"] = json.loads(payload)
+    return record
+
+
+async def create_scheduled_post(
     *,
     payload: dict,
     content_type: str,
@@ -40,54 +43,59 @@ def create_scheduled_post(
     status: str = "scheduled",
     created_by: int | None = None,
 ):
-    record = {
-        "payload": payload,
-        "content_type": content_type,
-        "publish_at": serialize_datetime(publish_at),
-        "is_question": is_question,
-        "is_anonymous": is_anonymous,
-        "source_user_id": source_user_id,
-        "status": status,
-        "created_by": created_by,
-        "created_at": serialize_datetime(datetime.now()),
-    }
-    with _lock:
-        return _table.insert(record)
-
-
-def list_scheduled_posts(*, statuses: list[str] | None = None, limit: int = 20) -> list[dict]:
-    statuses = statuses or ["draft", "scheduled"]
-    with _lock:
-        rows = _table.search(_query.status.one_of(statuses))
-
-    def _sort_key(item):
-        status_weight = 0 if item.get("status") == "scheduled" else 1
-        publish_at = item.get("publish_at") or "9999-99-99 99:99:99"
-        created_at = item.get("created_at") or ""
-        return (status_weight, publish_at, created_at)
-
-    result = []
-    for row in sorted(rows, key=_sort_key)[:limit]:
-        result.append({"doc_id": row.doc_id, **dict(row)})
-    return result
-
-
-
-def get_due_scheduled_posts(now: datetime | None = None) -> list[dict]:
-    threshold = serialize_datetime(now or datetime.now())
-    with _lock:
-        rows = _table.search(
-            (_query.status == "scheduled")
-            & (_query.publish_at.exists())
-            & (_query.publish_at <= threshold)
+    return await fetchval(
+        """
+        INSERT INTO scheduled_posts(
+            payload, content_type, publish_at, is_question, is_anonymous,
+            source_user_id, status, created_by
         )
+        VALUES ($1::jsonb, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
+        """,
+        json.dumps(payload, ensure_ascii=False),
+        content_type,
+        publish_at,
+        is_question,
+        is_anonymous,
+        source_user_id,
+        status,
+        created_by,
+    )
 
-    result = []
-    for row in sorted(rows, key=lambda item: item.get("publish_at") or ""):
-        result.append({"doc_id": row.doc_id, **dict(row)})
-    return result
+
+async def list_scheduled_posts(*, statuses: list[str] | None = None, limit: int = 20) -> list[dict]:
+    statuses = statuses or ["draft", "scheduled"]
+    rows = await fetch(
+        """
+        SELECT *
+        FROM scheduled_posts
+        WHERE status = ANY($1::text[])
+        ORDER BY
+            CASE WHEN status = 'scheduled' THEN 0 ELSE 1 END,
+            COALESCE(publish_at, TIMESTAMP '9999-12-31 23:59:59'),
+            created_at
+        LIMIT $2
+        """,
+        statuses,
+        limit,
+    )
+    return [_row_to_record(row) for row in rows]
 
 
-def remove_scheduled_post(doc_id: int) -> None:
-    with _lock:
-        _table.remove(doc_ids=[doc_id])
+async def get_due_scheduled_posts(now: datetime | None = None) -> list[dict]:
+    rows = await fetch(
+        """
+        SELECT *
+        FROM scheduled_posts
+        WHERE status = 'scheduled'
+            AND publish_at IS NOT NULL
+            AND publish_at <= $1
+        ORDER BY publish_at
+        """,
+        now or datetime.now(),
+    )
+    return [_row_to_record(row) for row in rows]
+
+
+async def remove_scheduled_post(doc_id: int) -> None:
+    await execute("DELETE FROM scheduled_posts WHERE id = $1", doc_id)

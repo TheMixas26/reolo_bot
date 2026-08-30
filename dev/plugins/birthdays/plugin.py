@@ -17,7 +17,8 @@ class BirthdaysPlugin:
 
     @staticmethod
     def setup(context):
+        context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
         logger = context.logger_factory("birthdays", persona="Никитос")
         logger.say("Доброе, выступаю на смену!")
         BirthdaysPlugin.register_jobs(context)
-        register_handlers(context)
+        context.include_router("predlojka", register_handlers(context))

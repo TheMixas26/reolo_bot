@@ -12,6 +12,7 @@ class AIPlugin:
 
     @staticmethod
     def setup(context):
+        context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
         logger = context.logger_factory("ai", persona="Борман")
         logger.say("Доброе, выступаю на смену!")
         AIPlugin.register_jobs(context)

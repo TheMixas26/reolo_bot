@@ -4,7 +4,7 @@ from .jobs import check_achievements
 class AchievementsPlugin:
     @staticmethod
     def register_handlers(context):
-        register_handlers(context)
+        context.include_router("predlojka", register_handlers(context))
 
     @staticmethod
     def register_jobs(context):
@@ -12,6 +12,7 @@ class AchievementsPlugin:
 
     @staticmethod
     def setup(context):
+        context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
         logger = context.logger_factory("achievements", persona="Варя")
         logger.say("За ачивками слежу!")
         AchievementsPlugin.register_jobs(context)

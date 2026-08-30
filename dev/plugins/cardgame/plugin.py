@@ -9,6 +9,8 @@ class CardGamePlugin:
 
     @staticmethod
     def setup(context):
+        context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
+        context.ensure_bot("rpg", display_name="RPG")
         logger = context.logger_factory("rpg-card", persona="Имя")
         logger.say("Не назначенное имя для карт")
         CardGamePlugin.register_handlers(context)

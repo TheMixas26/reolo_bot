@@ -1,36 +1,38 @@
 from settings import render_text_template
 from core.core_plugin.stats import log_command_usage, log_event
 from varibles.dialogue_loader import TEXT
-from telebot import types
+from aiogram.types import BotCommand, BotCommandScopeChat
 from pathlib import Path
 
 COMMANDS_FILE_PATH = Path("dev/varibles/command_list.txt")
 
 
-def set_commands(context, message=None):
+async def set_commands(context, message=None):
         if message and message.from_user.id != context.admin_id:
             return
         
-        scope = types.BotCommandScopeChat(context.admin_id)
+        scope = BotCommandScopeChat(chat_id=context.admin_id)
 
-        context.predlojka_bot.set_my_commands(get_commands_for_set(context, "predlojka"))
-        context.predlojka_bot.set_my_commands(
+        await context.predlojka_bot.set_my_commands(get_commands_for_set(context, "predlojka"))
+        await context.predlojka_bot.set_my_commands(
             get_commands_for_set(context, "predlojka", include_admin=True),
             scope=scope
         )
-        context.bank_bot.set_my_commands(get_commands_for_set(context, "bank"))
-        context.rpg_bot.set_my_commands(get_commands_for_set(context, "rpg"))
-        context.rpg_bot.set_my_commands(
-            get_commands_for_set(context, "rpg", include_admin=True),
-            scope=scope,
-        )
+        if context.bank_bot is not None:
+            await context.bank_bot.set_my_commands(get_commands_for_set(context, "bank"))
+        if context.rpg_bot is not None:
+            await context.rpg_bot.set_my_commands(get_commands_for_set(context, "rpg"))
+            await context.rpg_bot.set_my_commands(
+                get_commands_for_set(context, "rpg", include_admin=True),
+                scope=scope,
+            )
 
         if message:
             log_command_usage("predlojka", "setcmd", message)
         log_event("commands_synced", bot="system", metadata={"triggered_by": message.from_user.id if message else "scheduler"})
 
         if message:
-            context.tg_adapter.reply_to(message, TEXT('setcmd_successfully'))
+            await message.reply(TEXT('setcmd_successfully'))
 
 
 
@@ -39,12 +41,12 @@ def crisis_log(context, message: str):
         context.logger.error(message)
 
 
-def crisis_tg(context, message: str):
+async def crisis_tg(context, message: str):
     """Отправляет администратору сообщение о критической ошибке"""
     try:
         for i in range(10):
-            context.predlojka_bot.send_message(
-                context.admin,
+            await context.predlojka_bot.send_message(
+                context.admin_id,
                 message,
                 parse_mode='HTML',
                 disable_notification=False
@@ -53,7 +55,7 @@ def crisis_tg(context, message: str):
         crisis_log("🚨 КРИТИЧЕСКИЙ КРИЗИС: БОТ УМЕР И НЕ МОЖЕТ СООБЩИТЬ О КРИЗИСЕ")
 
 
-def get_commands_for_set(context, bot_name: str = "predlojka", include_admin: bool = False) -> list[types.BotCommand]:
+def get_commands_for_set(context, bot_name: str = "predlojka", include_admin: bool = False) -> list[BotCommand]:
     registry = _load_command_registry(context)
     user_section = registry.get(f"{bot_name}_user", [])
     if not include_admin:
@@ -65,8 +67,8 @@ def _normalize_section_name(raw_name: str) -> str:
     return raw_name.strip().strip("[]").strip().lower()
 
 
-def _load_command_registry(context) -> dict[str, list[types.BotCommand]]:
-    registry: dict[str, list[types.BotCommand]] = {}
+def _load_command_registry(context) -> dict[str, list[BotCommand]]:
+    registry: dict[str, list[BotCommand]] = {}
     current_section = "predlojka_user"
 
     try:
@@ -88,7 +90,7 @@ def _load_command_registry(context) -> dict[str, list[types.BotCommand]]:
 
                 command, description = parts
                 registry.setdefault(current_section, []).append(
-                    types.BotCommand(command.strip(), render_text_template(description.strip()))
+                    BotCommand(command=command.strip(), description=render_text_template(description.strip()))
                 )
 
     except FileNotFoundError:
@@ -97,8 +99,8 @@ def _load_command_registry(context) -> dict[str, list[types.BotCommand]]:
             "Товарищ администратор, тут нюансик такой... Я не смогла найти файл с командами для бота... Проверьте это как можно скорее! (ಥ﹏ಥ)",
         )
         registry["predlojka_user"] = [
-            types.BotCommand("start", "Запустить бота"),
-            types.BotCommand("help", "Помощь"),
+            BotCommand(command="start", description="Запустить бота"),
+            BotCommand(command="help", description="Помощь"),
         ]
 
     return registry

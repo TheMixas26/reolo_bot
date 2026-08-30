@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import logging
-import threading
+import asyncio
+import inspect
 from datetime import datetime
 from pathlib import Path
 import random
 
-from telebot import types
+from aiogram import F, Router, types
+from aiogram.filters import Command
 from varibles.dialogue_loader import TEXT
 
 from core.core_plugin.stats import log_event, log_command_usage
 from database.scheduled_posts_db import create_scheduled_post
 from database.sqlite_db import add_to_post_counter
-from posting.models import Post
-from posting.services import PostFormatter
+from .classes import Post, PublishResult, MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin, PostTarget, PublishResult, PostFormatter
 from plugins.ai.handlers import process_ai_message
 from .service import thx_for_message
 from database.scheduled_posts_db import list_scheduled_posts
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 q = types.ReplyKeyboardRemove()
 media_groups_buffer: dict[str, list] = {}
-media_groups_timer: dict[str, threading.Timer] = {}
+media_groups_timer: dict[str, asyncio.Task] = {}
 moderation_queue: dict[int, dict] = {}
 album_queue: dict[int, dict] = {}
 album_media_cache: dict[int, dict] = {}
@@ -54,11 +55,10 @@ direct_message_queue: dict[int, dict] = {}
 pending_direct_message_answers: dict[int, dict] = {}
 pending_scheduled_publications: dict[int, dict] = {}
 
-predlojka_telegram_adapter = None
-telegram_adapter = None
-post_publisher = None
+
 telegram_admin_target = None
 admin = None
+predlojka_bot = None
 channel = None
 channel_red = None
 chat_mishas_den = None
@@ -66,6 +66,7 @@ backup_chat = None
 HIBERNATION = False
 plugin_context = None
 _registered_bot = None
+_registered_router = None
 QUESTION_ANSWER_SEPARATOR = "\n\n=====QUESTION_ANSWER_SEPARATOR=====\n\n"
 
 MEDIA_GROUP_TIMEOUT = 2.0
@@ -75,14 +76,26 @@ EVENT_LIBRARY_PATH = VARIBLES_DIR / "events_library.txt"
 REPORT_LIBRARY_PATH = VARIBLES_DIR / "reports_library.txt"
 
 
+async def _maybe_await(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+async def _bot_call(method_name: str, *args, **kwargs):
+    return await _maybe_await(getattr(predlojka_bot, method_name)(*args, **kwargs))
+
+
+async def _sender_call(sender, method_name: str, *args, **kwargs):
+    return await _maybe_await(getattr(sender, method_name)(*args, **kwargs))
+
+
 def _configure_runtime(context) -> None:
-    global plugin_context, predlojka_telegram_adapter, telegram_adapter, post_publisher, telegram_admin_target
+    global plugin_context, predlojka_bot, telegram_admin_target
     global admin, channel, channel_red, chat_mishas_den, backup_chat, HIBERNATION
 
     plugin_context = context
-    predlojka_telegram_adapter = context.tg_adapter
-    telegram_adapter = context.tg_adapter
-    post_publisher = context.post_publisher
+    predlojka_bot = context.predlojka_bot
     telegram_admin_target = context.telegram_admin_target
     admin = context.admin_id
     channel = context.config.channel
@@ -96,8 +109,9 @@ def _configure_runtime(context) -> None:
 
 
 
-def _send_hibernation_message(chat_id: int, *, reply_to_message_id: int | None = None) -> None:
-    predlojka_telegram_adapter.send_message(
+async def _send_hibernation_message(chat_id: int, *, reply_to_message_id: int | None = None) -> None:
+    await _bot_call(
+        "send_message",
         chat_id,
         TEXT("hibernation_message"),
         reply_to_message_id=reply_to_message_id,
@@ -106,13 +120,101 @@ def _send_hibernation_message(chat_id: int, *, reply_to_message_id: int | None =
 
 
 
+async def publish_post(
+        target,
+        post: Post,
+        rendered_text: str,
+        *,
+        disable_notification: bool = False,
+        parse_mode: str | None = None,
+    ):
+        message_ids: list[int | str] = []
+        effective_text, effective_parse_mode = predlojka_service._resolve_rendered_text(post, rendered_text, parse_mode)
 
-def _maybe_send_advice(message, content: SubmissionContent) -> None:
+        if post.is_album:
+            media = predlojka_service._build_album_media(post, effective_text, effective_parse_mode)
+            if not media:
+                response = await _bot_call(
+                    "send_message",
+                    (target if isinstance(target, int) else target.destination_id),
+                    effective_text,
+                    disable_notification=disable_notification,
+                    parse_mode=effective_parse_mode,
+                )
+                return PublishResult(target_id=(target if isinstance(target, int) else target.destination_id), message_ids=[response.message_id], raw_response=response)
+            response = await _bot_call("send_media_group", (target if isinstance(target, int) else target.destination_id), media)
+            message_ids.extend(item.message_id for item in response)
+            return PublishResult(target_id=(target if isinstance(target, int) else target.destination_id), message_ids=message_ids, raw_response=response)
+
+        if not post.attachments:
+            response = await _bot_call(
+                "send_message",
+                (target if isinstance(target, int) else target.destination_id),
+                effective_text,
+                disable_notification=disable_notification,
+                parse_mode=effective_parse_mode,
+            )
+            return PublishResult(target_id=(target if isinstance(target, int) else target.destination_id), message_ids=[response.message_id], raw_response=response)
+
+        attachment = post.attachments[0]
+        file_id = predlojka_service._resolve_telegram_reference(attachment)
+        if not file_id:
+            response = await _bot_call(
+                "send_message",
+                target.destination_id,
+                effective_text,
+                disable_notification=disable_notification,
+                parse_mode=effective_parse_mode,
+            )
+            return PublishResult((target if isinstance(target, int) else target.destination_id), message_ids=[response.message_id], raw_response=response)
+
+        if attachment.media_type == MediaType.STICKER:
+            sticker_message = await _bot_call("send_sticker", target.destination_id, file_id, disable_notification=disable_notification)
+            message_ids.append(sticker_message.message_id)
+            if effective_text:
+                text_message = await _bot_call(
+                    "send_message",
+                    target.destination_id,
+                    effective_text,
+                    disable_notification=disable_notification,
+                    parse_mode=effective_parse_mode,
+                )
+                message_ids.append(text_message.message_id)
+                return PublishResult(target_id=target.destination_id, message_ids=message_ids, raw_response=[sticker_message, text_message])
+            return PublishResult(target_id=target.destination_id, message_ids=message_ids, raw_response=sticker_message)
+
+        sender_map = {
+            MediaType.PHOTO: predlojka_bot.send_photo,
+            MediaType.VIDEO: predlojka_bot.send_video,
+            MediaType.DOCUMENT: predlojka_bot.send_document,
+            MediaType.AUDIO: predlojka_bot.send_audio,
+            MediaType.VOICE: predlojka_bot.send_voice,
+        }
+        sender = sender_map.get(attachment.media_type)
+        if sender is None:
+            raise ValueError(f"Неподдерживаемый тип публикации в Telegram: {attachment.media_type.value}")
+
+        response = await _maybe_await(sender(
+            target.destination_id,
+            file_id,
+            caption=effective_text or None,
+            disable_notification=disable_notification,
+            parse_mode=effective_parse_mode,
+        ))
+        return PublishResult(target_id=target.destination_id, message_ids=[response.message_id], raw_response=response)
+
+
+
+
+
+
+async def _maybe_send_advice(message, content: SubmissionContent) -> None:
     if content.ignore_reaction:
         return
     if random.random() >= 0.4:
         return
-    predlojka_telegram_adapter.send_message(
+    await _bot_call(
+        "send_message",
         message.chat.id,
         TEXT("advice_messages"),
         reply_to_message_id=message.message_id,
@@ -120,7 +222,7 @@ def _maybe_send_advice(message, content: SubmissionContent) -> None:
     )
 
 
-def _acknowledge_submission(message, content: SubmissionContent, user_name: str) -> None:
+async def _acknowledge_submission(message, content: SubmissionContent, user_name: str) -> None:
     if content.ignore_reaction:
         return
 
@@ -133,8 +235,9 @@ def _acknowledge_submission(message, content: SubmissionContent, user_name: str)
     else:
         text = thx_for_message(user_name, mes_type="?" if content.is_question else "!")
 
-    predlojka_telegram_adapter.send_message(message.chat.id, text, reply_markup=q)
-    _maybe_send_advice(message, content)
+    sender = getattr(plugin_context, "tg_adapter", None) or predlojka_bot
+    await _sender_call(sender, "send_message", message.chat.id, text, reply_markup=q)
+    await _maybe_send_advice(message, content)
 
 
 def _build_direct_message_markup() -> types.InlineKeyboardMarkup:
@@ -183,13 +286,14 @@ def _append_library_entry(path: Path, message, content: SubmissionContent, user_
         file.write("\n".join(lines))
 
 
-def _send_report_library_snapshot() -> None:
+async def _send_report_library_snapshot() -> None:
     if not REPORT_LIBRARY_PATH.exists():
         return
 
     try:
         with REPORT_LIBRARY_PATH.open("rb") as file:
-            predlojka_telegram_adapter.send_document(
+            await _bot_call(
+                "send_document",
                 backup_chat,
                 file,
                 visible_file_name="reports_library.txt",
@@ -200,15 +304,15 @@ def _send_report_library_snapshot() -> None:
         logger.error(f"Не удалось отправить reports_library.txt в debug chat: {error}")
 
 
-def _copy_single_message_to_admin(message):
+async def _copy_single_message_to_admin(message):
     try:
-        return predlojka_telegram_adapter.copy_message(admin, message.chat.id, message.message_id)
+        return await _bot_call("copy_message", admin, message.chat.id, message.message_id)
     except Exception as error:
         logger.error(f"Не удалось скопировать сообщение админу: {error}")
         return None
 
 
-def _store_special_route(message, content: SubmissionContent) -> None:
+async def _store_special_route(message, content: SubmissionContent) -> None:
     user_name = _display_name(message.from_user)
     route_labels = {
         "event": "Новая идея события",
@@ -221,13 +325,14 @@ def _store_special_route(message, content: SubmissionContent) -> None:
         _append_library_entry(EVENT_LIBRARY_PATH, message, content, user_name, route_label=route_label, content_type=message.content_type)
     elif content.route == "report":
         _append_library_entry(REPORT_LIBRARY_PATH, message, content, user_name, route_label=route_label, content_type=message.content_type)
-        _send_report_library_snapshot()
+        await _send_report_library_snapshot()
 
-    copied_message = _copy_single_message_to_admin(message)
+    copied_message = await _copy_single_message_to_admin(message)
     summary = _build_route_summary(message, content, user_name, route_label=route_label, content_type=message.content_type)
 
     if content.route == "message":
-        control_message = predlojka_telegram_adapter.send_message(
+        control_message = await _bot_call(
+            "send_message",
             admin,
             summary,
             reply_to_message_id=copied_message.message_id if copied_message else None,
@@ -240,13 +345,14 @@ def _store_special_route(message, content: SubmissionContent) -> None:
             "content_type": message.content_type,
         }
     else:
-        predlojka_telegram_adapter.send_message(
+        await _bot_call(
+            "send_message",
             admin,
             summary,
             reply_to_message_id=copied_message.message_id if copied_message else None,
         )
 
-    _acknowledge_submission(message, content, user_name)
+    await _acknowledge_submission(message, content, user_name)
     log_event(
         f"{content.route}_submitted",
         bot="predlojka",
@@ -256,7 +362,7 @@ def _store_special_route(message, content: SubmissionContent) -> None:
     )
 
 
-def _store_special_route_album(items: list, content: SubmissionContent) -> None:
+async def _store_special_route_album(items: list, content: SubmissionContent) -> None:
     first_item = items[0]
     user_name = _display_name(first_item.from_user)
     route_labels = {
@@ -273,16 +379,17 @@ def _store_special_route_album(items: list, content: SubmissionContent) -> None:
         _append_library_entry(EVENT_LIBRARY_PATH, first_item, content, user_name, route_label=route_label, content_type="album", items_count=len(media))
     elif content.route == "report":
         _append_library_entry(REPORT_LIBRARY_PATH, first_item, content, user_name, route_label=route_label, content_type="album", items_count=len(media))
-        _send_report_library_snapshot()
+        await _send_report_library_snapshot()
 
     if media:
-        sent_preview = safe_send_media_group(admin, media)
+        sent_preview = await safe_send_media_group(admin, media)
         if sent_preview:
             preview_ids = [item.message_id for item in sent_preview]
 
     summary = _build_route_summary(first_item, content, user_name, route_label=route_label, content_type="album", items_count=len(media))
     if content.route == "message":
-        control_message = predlojka_telegram_adapter.send_message(
+        control_message = await _bot_call(
+            "send_message",
             admin,
             summary,
             reply_to_message_id=preview_ids[0] if preview_ids else None,
@@ -296,9 +403,9 @@ def _store_special_route_album(items: list, content: SubmissionContent) -> None:
             "preview_ids": preview_ids,
         }
     else:
-        predlojka_telegram_adapter.send_message(admin, summary, reply_to_message_id=preview_ids[0] if preview_ids else None)
+        await _bot_call("send_message", admin, summary, reply_to_message_id=preview_ids[0] if preview_ids else None)
 
-    _acknowledge_submission(first_item, content, user_name)
+    await _acknowledge_submission(first_item, content, user_name)
     log_event(
         f"{content.route}_submitted",
         bot="predlojka",
@@ -403,7 +510,7 @@ def _log_submission(message, content: SubmissionContent, *, event_type: str, con
     )
 
 
-def _send_admin_preview(message, content: SubmissionContent, publish_text: str) -> None:
+async def _send_admin_preview(message, content: SubmissionContent, publish_text: str) -> None:
     markup = _build_moderation_markup(is_question=content.is_question)
     platform_post = _build_platform_post_from_message(message, content)
     preview_caption = publish_text or _compose_publish_text(content, _display_name(message.from_user))
@@ -425,7 +532,8 @@ def _send_admin_preview(message, content: SubmissionContent, publish_text: str) 
     }
 
     if message.content_type == "text":
-        admin_message = predlojka_telegram_adapter.send_message(
+        admin_message = await _bot_call(
+            "send_message",
             admin,
             f"{_preview_title(content, message.content_type)}\n\n{preview_formatted_text}",
             reply_markup=markup,
@@ -433,34 +541,35 @@ def _send_admin_preview(message, content: SubmissionContent, publish_text: str) 
         )
     elif message.content_type == "sticker":
         payload["file_id"] = message.sticker.file_id
-        admin_message = predlojka_telegram_adapter.send_sticker(admin, message.sticker.file_id, reply_markup=markup)
-        helper = predlojka_telegram_adapter.send_message(admin, preview_formatted_text, reply_to_message_id=admin_message.message_id, parse_mode=preview_parse_mode)
+        admin_message = await _bot_call("send_sticker", admin, message.sticker.file_id, reply_markup=markup)
+        helper = await _bot_call("send_message", admin, preview_formatted_text, reply_to_message_id=admin_message.message_id, parse_mode=preview_parse_mode)
         payload["helper_message_id"] = helper.message_id
     elif message.content_type == "photo":
         payload["file_id"] = message.photo[-1].file_id
-        admin_message = predlojka_telegram_adapter.send_photo(admin, message.photo[-1].file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        admin_message = await _bot_call("send_photo", admin, message.photo[-1].file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     elif message.content_type == "video":
         payload["file_id"] = message.video.file_id
-        admin_message = predlojka_telegram_adapter.send_video(admin, message.video.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        admin_message = await _bot_call("send_video", admin, message.video.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     elif message.content_type == "document":
         payload["file_id"] = message.document.file_id
-        admin_message = predlojka_telegram_adapter.send_document(admin, message.document.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        admin_message = await _bot_call("send_document", admin, message.document.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     elif message.content_type == "audio":
         payload["file_id"] = message.audio.file_id
-        admin_message = predlojka_telegram_adapter.send_audio(admin, message.audio.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        admin_message = await _bot_call("send_audio", admin, message.audio.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     elif message.content_type == "voice":
         payload["file_id"] = message.voice.file_id
-        admin_message = predlojka_telegram_adapter.send_voice(admin, message.voice.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        admin_message = await _bot_call("send_voice", admin, message.voice.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
     else:
         raise ValueError(f"Неподдерживаемый тип контента: {message.content_type}")
 
     moderation_queue[admin_message.message_id] = payload
 
 
-def _send_external_admin_preview(post: Post) -> None:
+async def _send_external_admin_preview(post: Post) -> None:
     preview_text = PostFormatter.compose_publish_text(post)
-    preview_result = telegram_adapter.publish_post(telegram_admin_target, post, preview_text)
-    control_message = telegram_adapter.send_text(
+    preview_result = await publish_post(telegram_admin_target, post, preview_text)
+    control_message = await _bot_call(
+        "send_message",
         admin,
         _preview_title_for_post(post),
         reply_markup=_build_moderation_markup(is_question=post.is_question),
@@ -481,14 +590,14 @@ def _send_external_admin_preview(post: Post) -> None:
     }
 
 
-def _notify_publish_warnings(errors: dict) -> None:
+async def _notify_publish_warnings(errors: dict) -> None:
     if not errors:
         return
     warning_text = "Часть площадок не приняла публикацию:\n" + "\n".join(f"- {error}" for error in errors.values())
-    predlojka_telegram_adapter.send_message(admin, warning_text)
+    await _bot_call("send_message", admin, warning_text)
 
 
-def _publish_payload(payload: dict) -> None:
+async def _publish_payload(payload: dict) -> None:
     content_type = payload["content_type"]
     publish_text = payload["publish_text"]
     file_id = payload.get("file_id")
@@ -496,38 +605,40 @@ def _publish_payload(payload: dict) -> None:
     post_data = payload.get("post_data")
 
     if post_data:
-        outcome = post_publisher.publish_post(
-            _deserialize_post(post_data),
-            rendered_text=publish_text,
-            disable_notification=True,
-            parse_mode=parse_mode,
-        )
-        if outcome.has_errors:
-            _notify_publish_warnings(outcome.errors)
+        try:
+            await publish_post(
+                target=channel,
+                post=_deserialize_post(post_data),
+                rendered_text=publish_text,
+                disable_notification=True,
+                parse_mode=parse_mode,
+            )
+        except Exception as e:
+            await _notify_publish_warnings(e)
         return
 
     if content_type == "text":
-        predlojka_telegram_adapter.send_message(channel, publish_text, disable_notification=True, parse_mode=parse_mode)
+        await _bot_call("send_message", channel, publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "sticker":
-        predlojka_telegram_adapter.send_sticker(channel, file_id, disable_notification=True)
+        await _bot_call("send_sticker", channel, file_id, disable_notification=True)
         if publish_text:
-            predlojka_telegram_adapter.send_message(channel, publish_text, disable_notification=True, parse_mode=parse_mode)
+            await _bot_call("send_message", channel, publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "photo":
-        predlojka_telegram_adapter.send_photo(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
+        await _bot_call("send_photo", channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "video":
-        predlojka_telegram_adapter.send_video(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
+        await _bot_call("send_video", channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "document":
-        predlojka_telegram_adapter.send_document(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
+        await _bot_call("send_document", channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "audio":
-        predlojka_telegram_adapter.send_audio(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
+        await _bot_call("send_audio", channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     if content_type == "voice":
-        predlojka_telegram_adapter.send_voice(channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
+        await _bot_call("send_voice", channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
     raise ValueError(f"Неподдерживаемый тип публикации: {content_type}")
 
@@ -555,20 +666,21 @@ def _deserialize_album_media(media_items: list[dict]) -> list:
     return media
 
 
-def _publish_album_payload(payload: dict) -> None:
+async def _publish_album_payload(payload: dict) -> None:
     post_data = payload.get("post_data")
     if post_data:
-        outcome = post_publisher.publish_post(
-            _deserialize_post(post_data),
+        outcome = await publish_post(
+            target=channel,
+            post=_deserialize_post(post_data),
             rendered_text=payload.get("publish_text", ""),
             disable_notification=True,
             parse_mode=payload.get("parse_mode"),
         )
         if outcome.has_errors:
-            _notify_publish_warnings(outcome.errors)
+            await _notify_publish_warnings(outcome.errors)
         return
     media = _deserialize_album_media(payload["media"])
-    sent = safe_send_media_group(channel, media)
+    sent = await safe_send_media_group(channel, media)
     if not sent:
         raise RuntimeError("Не удалось отправить альбом в канал")
 
@@ -591,25 +703,25 @@ def _build_ready_question_payload(payload: dict, answer_text: str) -> dict:
     return ready_payload
 
 
-def _publish_question_with_answer(payload: dict, answer_text: str) -> None:
-    _publish_payload(_build_ready_question_payload(payload, answer_text))
+async def _publish_question_with_answer(payload: dict, answer_text: str) -> None:
+    await _publish_payload(_build_ready_question_payload(payload, answer_text))
 
 
-def _clear_preview_messages(payload: dict, moderation_message_id: int | None = None) -> None:
+async def _clear_preview_messages(payload: dict, moderation_message_id: int | None = None) -> None:
     helper_message_id = payload.get("helper_message_id")
     if helper_message_id:
-        safe_delete_message(admin, helper_message_id)
+        await safe_delete_message(admin, helper_message_id)
     for preview_message_id in payload.get("preview_message_ids", []):
-        safe_delete_message(admin, preview_message_id)
+        await safe_delete_message(admin, preview_message_id)
     if moderation_message_id is not None:
-        safe_delete_message(admin, moderation_message_id)
+        await safe_delete_message(admin, moderation_message_id)
 
 
-def _clear_album_preview(queue_payload: dict, moderation_message_id: int | None = None) -> None:
+async def _clear_album_preview(queue_payload: dict, moderation_message_id: int | None = None) -> None:
     for preview_id in queue_payload.get("preview_ids", []):
-        safe_delete_message(admin, preview_id)
+        await safe_delete_message(admin, preview_id)
     if moderation_message_id is not None:
-        safe_delete_message(admin, moderation_message_id)
+        await safe_delete_message(admin, moderation_message_id)
 
 
 def _parse_schedule_datetime(raw_value: str) -> datetime | None:
@@ -636,19 +748,19 @@ def _parse_schedule_datetime(raw_value: str) -> datetime | None:
     return None
 
 
-def _request_schedule_datetime(admin_user_id: int, pending_payload: dict, *, reply_to_message_id: int | None = None, callback_query_id: str | None = None) -> None:
+async def _request_schedule_datetime(admin_user_id: int, pending_payload: dict, *, reply_to_message_id: int | None = None, callback_query_id: str | None = None) -> None:
     pending_scheduled_publications[admin_user_id] = pending_payload
-    prompt = predlojka_telegram_adapter.send_message(
+    await _bot_call(
+        "send_message",
         admin,
         "Напиши дату и время публикации.\n\nПоддерживаю форматы: ДД.ММ.ГГГГ ЧЧ:ММ, ДД.ММ ЧЧ:ММ или ГГГГ-ММ-ДД ЧЧ:ММ.\nДля отмены отправь /cancel_schedule",
         reply_to_message_id=reply_to_message_id,
     )
-    predlojka_telegram_adapter.register_next_step_handler(prompt, handle_schedule_datetime_input)
     if callback_query_id is not None:
-        predlojka_telegram_adapter.answer_callback_query(callback_query_id, "Жду дату и время публикации.")
+        await _bot_call("answer_callback_query", callback_query_id, "Жду дату и время публикации.")
 
 
-def _save_single_payload_as_draft(payload: dict, moderation_message_id: int, admin_user_id: int, chat_id: int) -> None:
+async def _save_single_payload_as_draft(payload: dict, moderation_message_id: int, admin_user_id: int, chat_id: int) -> None:
     record_id = create_scheduled_post(
         payload=dict(payload),
         content_type=payload["content_type"],
@@ -659,8 +771,8 @@ def _save_single_payload_as_draft(payload: dict, moderation_message_id: int, adm
         status="draft",
         created_by=admin_user_id,
     )
-    _clear_preview_messages(payload, moderation_message_id)
-    predlojka_telegram_adapter.send_message(admin, f"Черновик сохранён. ID задачи: {record_id}")
+    await _clear_preview_messages(payload, moderation_message_id)
+    await _bot_call("send_message", admin, f"Черновик сохранён. ID задачи: {record_id}")
     log_event(
         "post_drafted",
         bot="predlojka",
@@ -674,7 +786,7 @@ def _save_single_payload_as_draft(payload: dict, moderation_message_id: int, adm
     )
 
 
-def _save_album_payload_as_draft(queue_payload: dict, storage_payload: dict, moderation_message_id: int, admin_user_id: int, chat_id: int) -> None:
+async def _save_album_payload_as_draft(queue_payload: dict, storage_payload: dict, moderation_message_id: int, admin_user_id: int, chat_id: int) -> None:
     record_id = create_scheduled_post(
         payload=dict(storage_payload),
         content_type="album",
@@ -685,8 +797,8 @@ def _save_album_payload_as_draft(queue_payload: dict, storage_payload: dict, mod
         status="draft",
         created_by=admin_user_id,
     )
-    _clear_album_preview(queue_payload, moderation_message_id)
-    predlojka_telegram_adapter.send_message(admin, f"Черновик альбома сохранён. ID задачи: {record_id}")
+    await _clear_album_preview(queue_payload, moderation_message_id)
+    await _bot_call("send_message", admin, f"Черновик альбома сохранён. ID задачи: {record_id}")
     log_event(
         "album_drafted",
         bot="predlojka",
@@ -709,33 +821,29 @@ def _restore_scheduled_pending(pending: dict) -> None:
         moderation_queue[moderation_message_id] = pending["storage_payload"]
 
 
-def handle_schedule_datetime_input(message):
+async def handle_schedule_datetime_input(message):
     pending = pending_scheduled_publications.get(message.from_user.id)
     if pending is None:
-        predlojka_telegram_adapter.reply_to(message, "Не вижу публикации, которая ждёт планирования.")
+        await _maybe_await(message.reply("Не вижу публикации, которая ждёт планирования."))
         return
 
     if message.text and message.text.strip() == "/cancel_schedule":
         _restore_scheduled_pending(pending)
         pending_scheduled_publications.pop(message.from_user.id, None)
-        predlojka_telegram_adapter.reply_to(message, "Отменяю планирование и возвращаю запись в очередь модерации.")
+        await _maybe_await(message.reply("Отменяю планирование и возвращаю запись в очередь модерации."))
         return
 
     publish_at = _parse_schedule_datetime(message.text or "")
     if publish_at is None:
-        retry_prompt = predlojka_telegram_adapter.reply_to(
-            message,
+        await _maybe_await(message.reply(
             "Не смогла распознать дату. Попробуй формат вроде 05.04.2026 14:30.",
-        )
-        predlojka_telegram_adapter.register_next_step_handler(retry_prompt, handle_schedule_datetime_input)
+        ))
         return
 
     if publish_at <= datetime.now():
-        retry_prompt = predlojka_telegram_adapter.reply_to(
-            message,
+        await _maybe_await(message.reply(
             "Нужно указать время в будущем. Попробуй ещё раз.",
-        )
-        predlojka_telegram_adapter.register_next_step_handler(retry_prompt, handle_schedule_datetime_input)
+        ))
         return
 
     try:
@@ -749,12 +857,13 @@ def handle_schedule_datetime_input(message):
             created_by=message.from_user.id,
         )
         if pending["queue_type"] == "album":
-            _clear_album_preview(pending["queue_payload"], pending["moderation_message_id"])
+            await _clear_album_preview(pending["queue_payload"], pending["moderation_message_id"])
         else:
-            _clear_preview_messages(pending["storage_payload"], pending["moderation_message_id"])
-        safe_delete_message(admin, message.message_id)
+            await _clear_preview_messages(pending["storage_payload"], pending["moderation_message_id"])
+        await safe_delete_message(admin, message.message_id)
         pending_scheduled_publications.pop(message.from_user.id, None)
-        predlojka_telegram_adapter.send_message(
+        await _bot_call(
+            "send_message",
             admin,
             f"Публикацию запланировала на {publish_at.strftime('%d.%m.%Y %H:%M')}.\nID задачи: {record_id}",
         )
@@ -774,23 +883,23 @@ def handle_schedule_datetime_input(message):
         _restore_scheduled_pending(pending)
         pending_scheduled_publications.pop(message.from_user.id, None)
         logger.error(f"Не удалось сохранить отложенную публикацию: {error}")
-        predlojka_telegram_adapter.reply_to(message, "Не получилось сохранить публикацию. Вернула её в очередь модерации.")
+        await _maybe_await(message.reply("Не получилось сохранить публикацию. Вернула её в очередь модерации."))
 
 
-def _request_question_answer(call, payload: dict) -> None:
+async def _request_question_answer(call, payload: dict) -> None:
     pending_question_answers[call.from_user.id] = {
         "payload": payload,
         "moderation_message_id": call.message.message_id,
         "action": "publish",
     }
-    prompt = predlojka_telegram_adapter.send_message(
+    await _bot_call(
+        "send_message",
         admin,
         # TODO: Убрать этот диалог в texts.json
         "Отлично! Я рада, что ты заинтересовался) Напиши ответ текстиком, а я передам в канал! (^-^)\n\nЕсли всё же передумал, напиши /cancel_question_answer",
         reply_to_message_id=call.message.message_id,
     )
-    predlojka_telegram_adapter.register_next_step_handler(prompt, handle_question_answer_input)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Жду текст ответа.")
+    await _bot_call("answer_callback_query", call.id, "Жду текст ответа.")
     log_event(
         "question_answer_requested",
         bot="predlojka",
@@ -800,7 +909,7 @@ def _request_question_answer(call, payload: dict) -> None:
     )
 
 
-def _request_question_answer_for_action(call, payload: dict, action: str) -> None:
+async def _request_question_answer_for_action(call, payload: dict, action: str) -> None:
     pending_question_answers[call.from_user.id] = {
         "payload": payload,
         "moderation_message_id": call.message.message_id,
@@ -811,35 +920,33 @@ def _request_question_answer_for_action(call, payload: dict, action: str) -> Non
         "schedule": "подготовлю к отложенной публикации",
         "draft": "сохраню в черновик",
     }[action]
-    prompt = predlojka_telegram_adapter.send_message(
+    await _bot_call(
+        "send_message",
         admin,
         f"Напиши ответ текстом, и я {action_text} вопрос одним готовым постом.\n\nЕсли передумал, напиши /cancel_question_answer",
         reply_to_message_id=call.message.message_id,
     )
-    predlojka_telegram_adapter.register_next_step_handler(prompt, handle_question_answer_input)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Жду текст ответа.")
+    await _bot_call("answer_callback_query", call.id, "Жду текст ответа.")
 
 
-def handle_question_answer_input(message):
+async def handle_question_answer_input(message):
     pending = pending_question_answers.get(message.from_user.id)
     if pending is None:
-        predlojka_telegram_adapter.reply_to(message, "Не могу найти вопроса, который ожидает ответа... (⊙▂⊙)")
+        await _maybe_await(message.reply("Не могу найти вопроса, который ожидает ответа... (⊙▂⊙)"))
         return
 
     if message.text and message.text.strip() == "/cancel_question_answer":
         payload = pending["payload"]
         moderation_queue[pending["moderation_message_id"]] = payload
         pending_question_answers.pop(message.from_user.id, None)
-        predlojka_telegram_adapter.reply_to(message, "Как скажешь, нет так нет! Вернула воспрос в очередь на модерацию.")
+        await _maybe_await(message.reply("Как скажешь, нет так нет! Вернула воспрос в очередь на модерацию."))
         return
 
     answer_text = (message.text or "").strip()
     if not answer_text:
-        retry_prompt = predlojka_telegram_adapter.reply_to(
-            message,
+        await _maybe_await(message.reply(
             "Боюсь, я смогу принять только текст в качестве ответа... Увы (︶︹︶)",
-        )
-        predlojka_telegram_adapter.register_next_step_handler(retry_prompt, handle_question_answer_input)
+        ))
         return
 
     payload = pending["payload"]
@@ -849,11 +956,11 @@ def handle_question_answer_input(message):
 
     try:
         if action == "publish":
-            _publish_payload(ready_payload)
-            _clear_preview_messages(ready_payload, moderation_message_id)
-            safe_delete_message(admin, message.message_id)
+            await _publish_payload(ready_payload)
+            await _clear_preview_messages(ready_payload, moderation_message_id)
+            await safe_delete_message(admin, message.message_id)
             pending_question_answers.pop(message.from_user.id, None)
-            predlojka_telegram_adapter.send_message(admin, "Вопрос с вашим прелестным ответом опубликован в канале! (｡•̀ᴗ-)✧")
+            await _bot_call("send_message", admin, "Вопрос с вашим прелестным ответом опубликован в канале! (｡•̀ᴗ-)✧")
             log_event(
                 "question_approved",
                 bot="predlojka",
@@ -865,14 +972,14 @@ def handle_question_answer_input(message):
             return
 
         if action == "draft":
-            _save_single_payload_as_draft(ready_payload, moderation_message_id, message.from_user.id, message.chat.id)
-            safe_delete_message(admin, message.message_id)
+            await _save_single_payload_as_draft(ready_payload, moderation_message_id, message.from_user.id, message.chat.id)
+            await safe_delete_message(admin, message.message_id)
             pending_question_answers.pop(message.from_user.id, None)
             return
 
         if action == "schedule":
             pending_question_answers.pop(message.from_user.id, None)
-            safe_delete_message(admin, message.message_id)
+            await safe_delete_message(admin, message.message_id)
             pending_payload = {
                 "queue_type": "single",
                 "queue_payload": None,
@@ -883,7 +990,7 @@ def handle_question_answer_input(message):
                 "source_user_id": ready_payload["source_user_id"],
                 "moderation_message_id": moderation_message_id,
             }
-            _request_schedule_datetime(
+            await _request_schedule_datetime(
                 message.from_user.id,
                 pending_payload,
                 reply_to_message_id=moderation_message_id,
@@ -895,53 +1002,53 @@ def handle_question_answer_input(message):
         moderation_queue[moderation_message_id] = payload
         pending_question_answers.pop(message.from_user.id, None)
         logger.error(f"Ошибка при публикации вопроса с ответом: {error}")
-        predlojka_telegram_adapter.reply_to(message, "Не получилось обработать вопрос с ответом. Вернула его в очередь модерации!")
+        await _maybe_await(message.reply("Не получилось обработать вопрос с ответом. Вернула его в очередь модерации!"))
 
 
-def _request_direct_message_answer(call, payload: dict) -> None:
+async def _request_direct_message_answer(call, payload: dict) -> None:
     pending_direct_message_answers[call.from_user.id] = {
         "payload": payload,
         "control_message_id": call.message.message_id,
     }
-    prompt = predlojka_telegram_adapter.send_message(
+    await _bot_call(
+        "send_message",
         admin,
         "Напиши текст ответа, и я отправлю его пользователю в ЛС.\n\nЕсли передумал, напиши /cancel_dm_answer",
         reply_to_message_id=call.message.message_id,
     )
-    predlojka_telegram_adapter.register_next_step_handler(prompt, handle_direct_message_answer_input)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Жду ответ для отправки в ЛС.")
+    await _bot_call("answer_callback_query", call.id, "Жду ответ для отправки в ЛС.")
 
 
-def handle_direct_message_answer_input(message):
+async def handle_direct_message_answer_input(message):
     pending = pending_direct_message_answers.get(message.from_user.id)
     if pending is None:
-        predlojka_telegram_adapter.reply_to(message, "Не вижу сообщения, которое ждёт ответа.")
+        await _maybe_await(message.reply("Не вижу сообщения, которое ждёт ответа."))
         return
 
     if message.text and message.text.strip() == "/cancel_dm_answer":
         direct_message_queue[pending["control_message_id"]] = pending["payload"]
         pending_direct_message_answers.pop(message.from_user.id, None)
-        predlojka_telegram_adapter.reply_to(message, "Хорошо, отменяю ответ и возвращаю сообщение в очередь.")
+        await _maybe_await(message.reply("Хорошо, отменяю ответ и возвращаю сообщение в очередь."))
         return
 
     answer_text = (message.text or "").strip()
     if not answer_text:
-        retry_prompt = predlojka_telegram_adapter.reply_to(message, "Смогу переслать пользователю только текстовый ответ.")
-        predlojka_telegram_adapter.register_next_step_handler(retry_prompt, handle_direct_message_answer_input)
+        await _maybe_await(message.reply("Смогу переслать пользователю только текстовый ответ."))
         return
 
     payload = pending["payload"]
     control_message_id = pending["control_message_id"]
 
     try:
-        predlojka_telegram_adapter.send_message(
+        await _bot_call(
+            "send_message",
             payload["source_user_id"],
             "Ответ администрации:\n\n" + answer_text,
         )
         pending_direct_message_answers.pop(message.from_user.id, None)
-        safe_delete_message(admin, control_message_id)
-        safe_delete_message(admin, message.message_id)
-        predlojka_telegram_adapter.send_message(admin, "Ответ пользователю отправлен в ЛС.")
+        await safe_delete_message(admin, control_message_id)
+        await safe_delete_message(admin, message.message_id)
+        await _bot_call("send_message", admin, "Ответ пользователю отправлен в ЛС.")
         log_event(
             "direct_message_replied",
             bot="predlojka",
@@ -953,15 +1060,15 @@ def handle_direct_message_answer_input(message):
         direct_message_queue[control_message_id] = payload
         pending_direct_message_answers.pop(message.from_user.id, None)
         logger.error(f"Не удалось отправить ответ в ЛС: {error}")
-        predlojka_telegram_adapter.reply_to(message, "Не получилось отправить ответ в ЛС. Вернула сообщение в очередь.")
+        await _maybe_await(message.reply("Не получилось отправить ответ в ЛС. Вернула сообщение в очередь."))
 
 
-def _submit_single_message(message) -> None:
+async def _submit_single_message(message) -> None:
     content_text = message.text if message.content_type == "text" else message.caption
     content = _parse_submission_text(content_text)
 
     if HIBERNATION and message.chat.id not in [chat_mishas_den, channel, channel_red]:
-        _send_hibernation_message(message.chat.id, reply_to_message_id=message.message_id)
+        await _send_hibernation_message(message.chat.id, reply_to_message_id=message.message_id)
         return
 
     if content.ignore_reaction:
@@ -970,9 +1077,9 @@ def _submit_single_message(message) -> None:
     if content.route == "post" and message.content_type == "text" and content.wants_ai and _can_use_ai(message.chat.id):
         if plugin_context is None:
             logger.error("AI-запрос нельзя обработать: PredlojkaPlugin не получил AppContext.")
-            predlojka_telegram_adapter.reply_to(message, "AI сейчас не подключён. Попробуй чуть позже.")
+            await _maybe_await(message.reply("AI сейчас не подключён. Попробуй чуть позже."))
             return
-        process_ai_message(plugin_context, message, content)
+        await process_ai_message(plugin_context, message, content)
         return
 
     if content.route == "post" and not _can_submit_post(message.chat.id):
@@ -984,13 +1091,13 @@ def _submit_single_message(message) -> None:
     user_name = _display_name(message.from_user)
 
     if content.route != "post":
-        _store_special_route(message, content)
+        await _store_special_route(message, content)
         return
 
     publish_text = _compose_publish_text(content, user_name)
     add_to_post_counter(message.from_user.id)
-    _acknowledge_submission(message, content, user_name)
-    _send_admin_preview(message, content, publish_text)
+    await _acknowledge_submission(message, content, user_name)
+    await _send_admin_preview(message, content, publish_text)
 
     _log_submission(
         message,
@@ -1001,21 +1108,21 @@ def _submit_single_message(message) -> None:
     logger.info(f"Получена запись для модерации: {message.content_type}")
 
 
-def accepter(message):
+async def accepter(message):
     ensure_user_exists(message.from_user)
 
     # if message.content_type == "text" and message.text.startswith("/"):
-    #     predlojka_telegram_adapter.reply_to(message, "Боюсь, такой команды я не знаю... (｡•́︿•̀｡)")
+    #     predlojka_bot.reply_to(message, "Боюсь, такой команды я не знаю... (｡•́︿•̀｡)")
     #     return
 
-    _submit_single_message(message)
+    await _submit_single_message(message)
 
 
 def _build_album_media(items: list, publish_caption: str) -> list:
     return _deserialize_album_media(_serialize_album_media(items, publish_caption))
 
 
-def process_media_group_for_moderation(media_group_id: str) -> None:
+async def process_media_group_for_moderation(media_group_id: str) -> None:
     try:
         items = media_groups_buffer.pop(media_group_id, [])
         media_groups_timer.pop(media_group_id, None)
@@ -1026,7 +1133,7 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
         captions = [item.caption for item in items if item.caption]
         content = _parse_submission_text("\n".join(captions))
         if HIBERNATION:
-            _send_hibernation_message(items[0].chat.id, reply_to_message_id=items[0].message_id)
+            await _send_hibernation_message(items[0].chat.id, reply_to_message_id=items[0].message_id)
             return
         if content.ignore_reaction:
             return
@@ -1036,7 +1143,7 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
             return
 
         if content.route != "post":
-            _store_special_route_album(items, content)
+            await _store_special_route_album(items, content)
             return
 
         user_name = _display_name(user)
@@ -1050,14 +1157,15 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
             return
 
         add_to_post_counter(user.id)
-        _acknowledge_submission(items[0], content, user_name)
+        await _acknowledge_submission(items[0], content, user_name)
 
-        sent_preview = safe_send_media_group(admin, media)
+        sent_preview = await safe_send_media_group(admin, media)
         if not sent_preview:
             logger.error("Не удалось отправить альбом админу")
             return
 
-        control_message = predlojka_telegram_adapter.send_message(
+        control_message = await _bot_call(
+            "send_message",
             admin,
             f"{_preview_title(content, 'album')}\n\nМедиа: {len(media)}",
             reply_markup=_build_moderation_markup(is_album=True),
@@ -1085,7 +1193,7 @@ def process_media_group_for_moderation(media_group_id: str) -> None:
         logger.error(f"Критическая ошибка в process_media_group_for_moderation: {error}", exc_info=True)
 
 
-def accept_album(call):
+async def accept_album(call):
     queue_payload = album_queue.pop(call.message.message_id, None)
     media_payload = album_media_cache.pop(call.message.message_id, None)
     if queue_payload is None or media_payload is None:
@@ -1094,20 +1202,20 @@ def accept_album(call):
         if media_payload is not None:
             album_media_cache[call.message.message_id] = media_payload
         r = "Этот альбом уже обработан или устарел."
-        predlojka_telegram_adapter.answer_callback_query(call.id, r)
+        await _bot_call("answer_callback_query", call.id, r)
         return
 
     try:
-        _publish_album_payload(media_payload)
+        await _publish_album_payload(media_payload)
     except Exception as error:
         album_queue[call.message.message_id] = queue_payload
         album_media_cache[call.message.message_id] = media_payload
         logger.error(f"Ошибка при публикации альбома: {error}")
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Не получилось опубликовать альбом.")
+        await _bot_call("answer_callback_query", call.id, "Не получилось опубликовать альбом.")
         return
 
-    _clear_album_preview(queue_payload, call.message.message_id)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Альбом опубликован!")
+    await _clear_album_preview(queue_payload, call.message.message_id)
+    await _bot_call("answer_callback_query", call.id, "Альбом опубликован!")
     log_event(
         "album_approved",
         bot="predlojka",
@@ -1117,15 +1225,15 @@ def accept_album(call):
     )
 
 
-def reject_album(call):
+async def reject_album(call):
     queue_payload = album_queue.pop(call.message.message_id, None)
     album_media_cache.pop(call.message.message_id, None)
     if queue_payload is None:
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Боюсь, этот альбом уже обработан или устарел... ")
+        await _bot_call("answer_callback_query", call.id, "Боюсь, этот альбом уже обработан или устарел... ")
         return
 
-    _clear_album_preview(queue_payload, call.message.message_id)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Альбом отклонён! (￣^￣)ゞ")
+    await _clear_album_preview(queue_payload, call.message.message_id)
+    await _bot_call("answer_callback_query", call.id, "Альбом отклонён! (￣^￣)ゞ")
     log_event(
         "album_rejected",
         bot="predlojka",
@@ -1135,7 +1243,7 @@ def reject_album(call):
     )
 
 
-def draft_album(call):
+async def draft_album(call):
     queue_payload = album_queue.pop(call.message.message_id, None)
     storage_payload = album_media_cache.pop(call.message.message_id, None)
     if queue_payload is None or storage_payload is None:
@@ -1143,14 +1251,14 @@ def draft_album(call):
             album_queue[call.message.message_id] = queue_payload
         if storage_payload is not None:
             album_media_cache[call.message.message_id] = storage_payload
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Этот альбом уже обработан или устарел.")
+        await _bot_call("answer_callback_query", call.id, "Этот альбом уже обработан или устарел.")
         return
 
-    _save_album_payload_as_draft(queue_payload, storage_payload, call.message.message_id, call.from_user.id, call.message.chat.id)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Альбом сохранён в черновиках.")
+    await _save_album_payload_as_draft(queue_payload, storage_payload, call.message.message_id, call.from_user.id, call.message.chat.id)
+    await _bot_call("answer_callback_query", call.id, "Альбом сохранён в черновиках.")
 
 
-def schedule_album(call):
+async def schedule_album(call):
     queue_payload = album_queue.pop(call.message.message_id, None)
     media_payload = album_media_cache.pop(call.message.message_id, None)
     if queue_payload is None or media_payload is None:
@@ -1158,7 +1266,7 @@ def schedule_album(call):
             album_queue[call.message.message_id] = queue_payload
         if media_payload is not None:
             album_media_cache[call.message.message_id] = media_payload
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Этот альбом уже обработан или устарел.")
+        await _bot_call("answer_callback_query", call.id, "Этот альбом уже обработан или устарел.")
         return
 
     pending_payload = {
@@ -1171,7 +1279,7 @@ def schedule_album(call):
         "source_user_id": queue_payload["source_user_id"],
         "moderation_message_id": call.message.message_id,
     }
-    _request_schedule_datetime(
+    await _request_schedule_datetime(
         call.from_user.id,
         pending_payload,
         reply_to_message_id=call.message.message_id,
@@ -1179,20 +1287,20 @@ def schedule_album(call):
     )
 
 
-def sender(call):
+async def sender(call):
     payload = moderation_queue.pop(call.message.message_id, None)
     if payload is None:
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Эта запись уже обработана или устарела... (◔~◔)")
+        await _bot_call("answer_callback_query", call.id, "Эта запись уже обработана или устарела... (◔~◔)")
         return
 
     if payload["is_question"] and not payload.get("question_answer_bundle"):
-        _request_question_answer(call, payload)
+        await _request_question_answer(call, payload)
         return
 
     try:
-        _publish_payload(payload)
-        _clear_preview_messages(payload, call.message.message_id)
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Сообщение опубликовано")
+        await _publish_payload(payload)
+        await _clear_preview_messages(payload, call.message.message_id)
+        await _bot_call("answer_callback_query", call.id, "Сообщение опубликовано")
         log_event(
             "question_approved" if payload["is_question"] else "post_approved",
             bot="predlojka",
@@ -1204,17 +1312,17 @@ def sender(call):
     except Exception as error:
         moderation_queue[call.message.message_id] = payload
         logger.error(f"Ошибка в sender: {error}")
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Ошибка при публикации")
+        await _bot_call("answer_callback_query", call.id, "Ошибка при публикации")
 
 
-def denier(call):
+async def denier(call):
     payload = moderation_queue.pop(call.message.message_id, None)
     if payload is None:
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Эта запись уже обработана или устарела.")
+        await _bot_call("answer_callback_query", call.id, "Эта запись уже обработана или устарела.")
         return
 
-    _clear_preview_messages(payload, call.message.message_id)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Сообщение отклонено")
+    await _clear_preview_messages(payload, call.message.message_id)
+    await _bot_call("answer_callback_query", call.id, "Сообщение отклонено")
     log_event(
         "question_rejected" if payload["is_question"] else "post_rejected",
         bot="predlojka",
@@ -1225,28 +1333,28 @@ def denier(call):
     logger.info("Пост отклонён")
 
 
-def draft_single_post(call):
+async def draft_single_post(call):
     payload = moderation_queue.pop(call.message.message_id, None)
     if payload is None:
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Эта запись уже обработана или устарела.")
+        await _bot_call("answer_callback_query", call.id, "Эта запись уже обработана или устарела.")
         return
 
     if payload["is_question"] and not payload.get("question_answer_bundle"):
-        _request_question_answer_for_action(call, payload, "draft")
+        await _request_question_answer_for_action(call, payload, "draft")
         return
 
-    _save_single_payload_as_draft(payload, call.message.message_id, call.from_user.id, call.message.chat.id)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Запись сохранена в черновиках.")
+    await _save_single_payload_as_draft(payload, call.message.message_id, call.from_user.id, call.message.chat.id)
+    await _bot_call("answer_callback_query", call.id, "Запись сохранена в черновиках.")
 
 
-def schedule_single_post(call):
+async def schedule_single_post(call):
     payload = moderation_queue.pop(call.message.message_id, None)
     if payload is None:
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Эта запись уже обработана или устарела.")
+        await _bot_call("answer_callback_query", call.id, "Эта запись уже обработана или устарела.")
         return
 
     if payload["is_question"] and not payload.get("question_answer_bundle"):
-        _request_question_answer_for_action(call, payload, "schedule")
+        await _request_question_answer_for_action(call, payload, "schedule")
         return
 
     pending_payload = {
@@ -1259,7 +1367,7 @@ def schedule_single_post(call):
         "source_user_id": payload["source_user_id"],
         "moderation_message_id": call.message.message_id,
     }
-    _request_schedule_datetime(
+    await _request_schedule_datetime(
         call.from_user.id,
         pending_payload,
         reply_to_message_id=call.message.message_id,
@@ -1267,21 +1375,21 @@ def schedule_single_post(call):
     )
 
 
-def reply_in_dm(call):
+async def reply_in_dm(call):
     payload = direct_message_queue.pop(call.message.message_id, None)
     if payload is None:
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Это сообщение уже обработано или устарело.")
+        await _bot_call("answer_callback_query", call.id, "Это сообщение уже обработано или устарело.")
         return
-    _request_direct_message_answer(call, payload)
+    await _request_direct_message_answer(call, payload)
 
 
-def close_dm_message(call):
+async def close_dm_message(call):
     payload = direct_message_queue.pop(call.message.message_id, None)
     if payload is None:
-        predlojka_telegram_adapter.answer_callback_query(call.id, "Это сообщение уже закрыто или устарело.")
+        await _bot_call("answer_callback_query", call.id, "Это сообщение уже закрыто или устарело.")
         return
-    safe_delete_message(admin, call.message.message_id)
-    predlojka_telegram_adapter.answer_callback_query(call.id, "Сообщение закрыто.")
+    await safe_delete_message(admin, call.message.message_id)
+    await _bot_call("answer_callback_query", call.id, "Сообщение закрыто.")
     log_event(
         "direct_message_closed",
         bot="predlojka",
@@ -1291,12 +1399,12 @@ def close_dm_message(call):
     )
 
 
-def publish_due_scheduled_posts() -> None:
+async def publish_due_scheduled_posts() -> None:
     from .jobs import publish_due_scheduled_posts as run_job
 
-    run_job()
+    await run_job()
 
-def show_scheduled_posts(message):
+async def show_scheduled_posts(message):
     if message.from_user.id != admin:
         return
 
@@ -1304,7 +1412,7 @@ def show_scheduled_posts(message):
     rows = list_scheduled_posts(limit=30)
 
     if not rows:
-        predlojka_telegram_adapter.reply_to(message, "В `scheduled_posts` пока пусто: ни черновиков, ни отложек нет.", parse_mode="Markdown")
+        await _maybe_await(message.reply("В `scheduled_posts` пока пусто: ни черновиков, ни отложек нет.", parse_mode="Markdown"))
         return
 
     lines = ["Содержимое `scheduled_posts`:\n"]
@@ -1318,16 +1426,16 @@ def show_scheduled_posts(message):
             f"#{row['doc_id']} | {status_label} | {content_type} | {publish_at} | user {source_user_id}\n{preview}\n"
         )
 
-    predlojka_telegram_adapter.reply_to(message, "\n".join(lines), parse_mode="Markdown")
+    await _maybe_await(message.reply("\n".join(lines), parse_mode="Markdown"))
 
-def submit_external_post(post: Post, *, acknowledge_callback=None) -> None:
+async def _submit_external_post_async(post: Post, *, acknowledge_callback=None) -> None:
     storage_user_id = ensure_post_author_exists(post)
     add_to_post_counter(storage_user_id)
 
     if acknowledge_callback is not None:
         acknowledge_callback(post)
 
-    _send_external_admin_preview(post)
+    await _send_external_admin_preview(post)
     log_event(
         "question_submitted" if post.is_question else "post_submitted",
         bot="predlojka",
@@ -1343,12 +1451,21 @@ def submit_external_post(post: Post, *, acknowledge_callback=None) -> None:
     logger.info(f"Получена запись для модерации: {post.content_type_label} ({post.origin.platform.value})")
 
 
-def media_group_handler(message):
+def submit_external_post(post: Post, *, acknowledge_callback=None) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(_submit_external_post_async(post, acknowledge_callback=acknowledge_callback))
+        return
+    loop.create_task(_submit_external_post_async(post, acknowledge_callback=acknowledge_callback))
+
+
+async def media_group_handler(message):
     ensure_user_exists(message.from_user)
 
     media_group_id = getattr(message, "media_group_id", None)
     if not media_group_id:
-        _submit_single_message(message)
+        await _submit_single_message(message)
         return
 
     media_group_key = str(media_group_id)
@@ -1360,44 +1477,46 @@ def media_group_handler(message):
     if timer is not None:
         timer.cancel()
 
-    new_timer = threading.Timer(MEDIA_GROUP_TIMEOUT, process_media_group_for_moderation, args=(media_group_key,))
+    async def _delayed_process() -> None:
+        await asyncio.sleep(MEDIA_GROUP_TIMEOUT)
+        await process_media_group_for_moderation(media_group_key)
+
+    new_timer = asyncio.create_task(_delayed_process())
     media_groups_timer[media_group_key] = new_timer
-    new_timer.start()
 
 
-def register_handlers(context) -> None:
-    global _registered_bot
+def register_handlers(context) -> Router:
+    global _registered_bot, _registered_router
 
     _configure_runtime(context)
     bot = context.predlojka_bot
     if _registered_bot is bot:
-        return
+        return _registered_router
 
-    bot.register_message_handler(
-        accepter,
-        content_types=["text", "sticker", "document", "audio", "voice"],
-        func=lambda message: not (message.text and message.text.startswith("/")),
-    )
-    bot.register_message_handler(
-        media_group_handler,
-        content_types=["photo", "video"],
-    )
-    bot.register_message_handler(
-        show_scheduled_posts,
-        commands=['drafts', 'scheduled_posts']
-    )
-    
-    bot.register_callback_query_handler(accept_album, func=lambda call: call.data == "mod_album:approve")
-    bot.register_callback_query_handler(reject_album, func=lambda call: call.data == "mod_album:reject")
-    bot.register_callback_query_handler(draft_album, func=lambda call: call.data == "mod_album:draft")
-    bot.register_callback_query_handler(schedule_album, func=lambda call: call.data == "mod_album:schedule")
-    bot.register_callback_query_handler(sender, func=lambda call: call.data == "mod:approve")
-    bot.register_callback_query_handler(denier, func=lambda call: call.data == "mod:reject")
-    bot.register_callback_query_handler(draft_single_post, func=lambda call: call.data == "mod:draft")
-    bot.register_callback_query_handler(schedule_single_post, func=lambda call: call.data == "mod:schedule")
-    bot.register_callback_query_handler(reply_in_dm, func=lambda call: call.data == "dm:reply")
-    bot.register_callback_query_handler(close_dm_message, func=lambda call: call.data == "dm:close")
+    router = Router(name="predlojka-plugin")
+    router.message(lambda message: getattr(getattr(message, "from_user", None), "id", None) in pending_scheduled_publications)(handle_schedule_datetime_input)
+    router.message(lambda message: getattr(getattr(message, "from_user", None), "id", None) in pending_question_answers)(handle_question_answer_input)
+    router.message(lambda message: getattr(getattr(message, "from_user", None), "id", None) in pending_direct_message_answers)(handle_direct_message_answer_input)
+    router.message(Command("drafts", "scheduled_posts"))(show_scheduled_posts)
+    router.message(
+        F.content_type.in_(["text", "sticker", "document", "audio", "voice"]),
+        lambda message: not ((getattr(message, "text", None) or "").startswith("/")),
+    )(accepter)
+    router.message(F.content_type.in_(["photo", "video"]))(media_group_handler)
+
+    router.callback_query(F.data == "mod_album:approve")(accept_album)
+    router.callback_query(F.data == "mod_album:reject")(reject_album)
+    router.callback_query(F.data == "mod_album:draft")(draft_album)
+    router.callback_query(F.data == "mod_album:schedule")(schedule_album)
+    router.callback_query(F.data == "mod:approve")(sender)
+    router.callback_query(F.data == "mod:reject")(denier)
+    router.callback_query(F.data == "mod:draft")(draft_single_post)
+    router.callback_query(F.data == "mod:schedule")(schedule_single_post)
+    router.callback_query(F.data == "dm:reply")(reply_in_dm)
+    router.callback_query(F.data == "dm:close")(close_dm_message)
     _registered_bot = bot
+    _registered_router = router
+    return router
 
 
 def configure(context) -> None:

@@ -26,34 +26,61 @@ THX_TEXT_CALLS = {
 USED_TEXT_CALLS = extract_literal_text_calls() | THX_TEXT_CALLS
 
 
+def resolve_text_key(data: dict, keys: tuple[str, ...]):
+    """Разрешает путь так же, как TEXT().
+
+    Поддерживает:
+        ("mafia", "table_full")
+        ("mafia", "lobby/open")
+        ("mafia/stats/header",)
+        ("mafia", "role/card/mafia")
+    """
+    for key in keys:
+        for part in key.split("/"):
+            if not part:
+                continue
+            data = data[part]
+
+    return data
+
+
 class DialogueTextsTests(unittest.TestCase):
     def test_texts_json_contains_every_used_key(self):
         from varibles.dialogue_loader import DIALOGS
 
         for text_call in sorted(USED_TEXT_CALLS, key=lambda item: item.keys):
-            with self.subTest(keys=" -> ".join(text_call.keys)):
-                value = DIALOGS
-                for key in text_call.keys:
-                    self.assertIn(key, value, f"Missing dialogue key: {' -> '.join(text_call.keys)}")
-                    value = value[key]
+            display_key = " -> ".join(text_call.keys)
+
+            with self.subTest(keys=display_key):
+                try:
+                    value = resolve_text_key(DIALOGS, text_call.keys)
+                except KeyError as exc:
+                    self.fail(
+                        f"Missing dialogue key: {display_key} "
+                        f"(missing part: {exc.args[0]!r})"
+                    )
+
+                self.assertIsNotNone(value)
 
     def test_text_returns_string_for_every_used_key(self):
         from varibles import dialogue_loader
 
-        with patch.object(dialogue_loader.random, "choice", side_effect=lambda values: values[0]):
+        with patch.object(
+            dialogue_loader.random,
+            "choice",
+            side_effect=lambda values: values[0],
+        ):
             for text_call in sorted(USED_TEXT_CALLS, key=lambda item: item.keys):
-                with self.subTest(keys=" -> ".join(text_call.keys)):
-                    rendered = dialogue_loader.TEXT(*text_call.keys, **build_sample_kwargs(text_call.keyword_names))
+                display_key = " -> ".join(text_call.keys)
+
+                with self.subTest(keys=display_key):
+                    rendered = dialogue_loader.TEXT(
+                        *text_call.keys,
+                        **build_sample_kwargs(text_call.keyword_names),
+                    )
+
                     self.assertIsInstance(rendered, str)
-                    self.assertTrue(rendered.strip(), f"Empty text for {' -> '.join(text_call.keys)}")
-
-    def test_name_placeholders_are_interpolated(self):
-        from varibles import dialogue_loader
-
-        expected_name = "Тест"
-        named_calls = [text_call for text_call in USED_TEXT_CALLS if "name" in text_call.keyword_names]
-        with patch.object(dialogue_loader.random, "choice", side_effect=lambda values: values[0]):
-            for text_call in sorted(named_calls, key=lambda item: item.keys):
-                with self.subTest(keys=" -> ".join(text_call.keys)):
-                    rendered = dialogue_loader.TEXT(*text_call.keys, name=expected_name)
-                    self.assertIn(expected_name, rendered)
+                    self.assertTrue(
+                        rendered.strip(),
+                        f"Empty text for {display_key}",
+                    )

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from telebot import types
+from aiogram import types
 from .catalog import get_rarity_label, get_pack_name, RARITY_WEIGHTS
 from core.core_plugin.stats import log_event
 from dataclasses import dataclass, field
@@ -27,6 +27,9 @@ from plugins.cardgame.battle import DuelSession, TeamBattleSession
 
 GameSession = DuelSession | TeamBattleSession
 _active_sessions: dict[int, GameSession] = {}
+
+
+# TODO: возможно, чтоит разбить на большее кол-во файлов, но однозначно texts.json
 
 
 def start_duel(

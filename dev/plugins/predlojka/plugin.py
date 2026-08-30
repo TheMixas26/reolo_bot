@@ -5,7 +5,9 @@ from .jobs import publish_due_scheduled_posts
 class PredlojkaPlugin:
     @staticmethod
     def register_handlers(context):
-        register_handlers(context)
+        router = register_handlers(context)
+        if router is not None:
+            context.include_router("predlojka", router)
 
     @staticmethod
     def register_jobs(context):
@@ -23,6 +25,7 @@ class PredlojkaPlugin:
 
     @staticmethod
     def setup(context):
+        context.ensure_bot("predlojka", display_name="ПРЕДЛОЖКА")
         logger = context.logger_factory("predlojka", persona="Варя")
         logger.say("Плагин предложки подключён.")
         PredlojkaPlugin.register_jobs(context)

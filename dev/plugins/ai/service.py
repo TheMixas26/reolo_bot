@@ -4,7 +4,8 @@ import random
 import re
 from logging import Logger
 
-import requests
+import aiohttp
+import asyncio
 from yandex_ai_studio_sdk import AIStudio
 
 from varibles.dialogue_loader import TEXT
@@ -71,7 +72,7 @@ class AIService:
                 self.logger.error(f"Ошибка в AIService.ask_ai: {error}")
             return get_fallback_message()
 
-    def count_tokens(self, text: str, model: str | None = None) -> int:
+    async def count_tokens(self, text: str, model: str | None = None) -> int:
         url = "https://llm.api.cloud.yandex.net/foundationModels/v1/tokenize"
         headers = {
             "Authorization": f"Api-Key {self.secret_key}",
@@ -81,16 +82,19 @@ class AIService:
             "modelUri": f"gpt://{self.catalog_id}/{model or self.model_name}",
             "text": text,
         }
-        response = requests.post(url, headers=headers, json=data, timeout=15)
-        response.raise_for_status()
-        return len(response.json().get("tokens", []))
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, headers=headers, json=data) as response:
+                response.raise_for_status()
+                payload = await response.json()
+        return len(payload.get("tokens", []))
 
 
 async def stream_ai(user_text: str, name: str, service: AIService):
-    response = service.ask_ai(user_text, name)
+    response = await asyncio.to_thread(service.ask_ai, user_text, name)
     if response is not None:
         yield response
 
 
-def count_tokens(text: str, service: AIService, model: str | None = None) -> int:
-    return service.count_tokens(text, model=model)
+async def count_tokens(text: str, service: AIService, model: str | None = None) -> int:
+    return await service.count_tokens(text, model=model)
