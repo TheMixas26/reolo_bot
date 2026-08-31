@@ -71,6 +71,7 @@ def register_handlers(context) -> Router:
                 metadata={"mode": "text"},
             )
         except Exception as error:
+            # TODO: texts.json
             await message.answer(f"(╥﹏╥) Ошибка при отправке поста: {error}")
         finally:
             await state.clear()
@@ -128,6 +129,7 @@ def register_handlers(context) -> Router:
             )
             await message.reply(TEXT("broadcast_done"))
         except Exception as error:
+            # TODO: texts.json
             await message.reply(f"(╥﹏╥) Ошибка при рассылке: {error}")
         finally:
             try:
@@ -143,6 +145,7 @@ def register_handlers(context) -> Router:
     @router.message(Command("send_actual_db"))
     async def send_actual_db(message: Message):
         if not _is_admin(message):
+            await message.reply(TEXT("not_an_admin"))
             return
         log_command_usage("predlojka", "send_actual_db", message)
         await backupDB(context)
@@ -164,16 +167,20 @@ def register_handlers(context) -> Router:
             user_id = int(user_id_str.strip())
             text_to_send = text_to_send.strip()
         except ValueError:
+            # TODO: texts.json
             await message.reply("Ошибка формата. Используйте: /send_smth ID|текст сообщения")
             return
         except Exception as error:
+            # TODO: texts.json
             await message.reply(f"Произошла ошибка: {error}")
             return
 
         try:
             await message.bot.send_message(user_id, text_to_send)
+            # TODO: texts.json
             await message.reply(f"Сообщение успешно отправлено получателю с ID {user_id}.")
         except Exception as error:
+            # TODO: texts.json
             await message.reply(f"Не удалось отправить сообщение получателю с ID {user_id}. Ошибка: {error}")
 
     return router

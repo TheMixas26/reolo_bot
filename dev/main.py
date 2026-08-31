@@ -20,6 +20,7 @@ from plugins import *
 from plugins.ai import AIService
 
 from varibles.dialogue_loader import load_texts
+from varibles import TEXT
 
 # from plugins.vk import VKPlugin
 
@@ -122,7 +123,7 @@ async def run_pre_launch_tests():
     return False
 
 
-async def run(skip_tests: bool = False) -> None:
+async def run(skip_tests: bool = False, notify_admin: bool = False) -> None:
     with open("bot_errors.log", "w", encoding="utf-8") as file:
         file.write("=== Новая сессия ===\n")
         file.write("КОЧЕГАР ЗАСТУПИЛ НА СМЕНУ\n\n")
@@ -151,6 +152,9 @@ async def run(skip_tests: bool = False) -> None:
         await context.start_telegram_bots()
     finally:
         scheduler.shutdown(wait=False)
+        if notify_admin:
+            await context.predlojka_bot.send_message(context.admin, TEXT("successfully_started"))
+        
         await context.close_telegram_bots()
 
 
@@ -158,6 +162,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Запуск бота")
     parser.add_argument("--skip-tests", action="store_true", help="Пропустить предварительные тесты")
     parser.add_argument("--all-texts", action="store_true", help="Создать единный файл со всеми текстами")
+    parser.add_argument("--notify-admin", action="store_true", help="Оповестить админа об успешном запуске")
     args = parser.parse_args()
     # TODO: Добавить больше полезных и интересных аргументов, мало ли, пригодится
 
@@ -222,7 +227,7 @@ if __name__ == "__main__":
             pass
 
     async def _run_and_wait():
-        task = asyncio.create_task(run(skip_tests=args.skip_tests))
+        task = asyncio.create_task(run(skip_tests=args.skip_tests, notify_admin=args.notify_admin))
         await stop_event.wait()
         task.cancel()
         try:
