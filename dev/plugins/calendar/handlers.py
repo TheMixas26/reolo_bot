@@ -2,12 +2,11 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from core.core_plugin.stats import log_command_usage
 
 
 def register_handlers(context) -> Router:
-    # TODO: texts.json
     router = Router(name="calendar-plugin")
 
     @router.message(Command("today"))
@@ -21,6 +20,7 @@ def register_handlers(context) -> Router:
             full_date = calendar.full()
             event = today["event"] if "event" in today else "Сегодня нет праздников."
 
+            # TODO: texts.json
             response = (
                 "📅 Имперская дата сегодня:\n\n"
                 f"Короткий формат: {short_date}\n"
@@ -39,6 +39,8 @@ def register_handlers(context) -> Router:
             from .service import calendar
 
             events = calendar.next_events(3)
+
+            # TODO: texts.json
             response = "🎉 Ближайшие праздники Имперского календаря:\n\n"
             for event in events:
                 response += (
@@ -58,6 +60,8 @@ def register_handlers(context) -> Router:
             from .service import calendar
 
             events = calendar.all_events_with_countdown()
+
+            # TODO: texts.json
             response = "📜 Все праздники Имперского календаря:\n\n"
             for event in events:
                 response += (

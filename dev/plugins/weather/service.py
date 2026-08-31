@@ -5,7 +5,7 @@ from typing import Optional
 
 import aiohttp
 
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 
 class WeatherAPIError(Exception):
     """Ошибка при получении или разборе погоды."""

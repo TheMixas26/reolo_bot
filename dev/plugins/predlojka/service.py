@@ -10,7 +10,7 @@ from database.sqlite_db import create_user_if_missing, user_exists
 from .classes import MediaAttachment, MediaType, Platform, Post, PostAuthor, PostOrigin, PostFactory, PostFormatter
 from aiogram import types
 from .classes import to_storage_user_id, PostParser
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from html import escape
 
 logger = logging.getLogger(__name__)

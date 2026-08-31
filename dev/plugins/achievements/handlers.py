@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from core.core_plugin.stats import log_command_usage, log_event
 from .db import get_all_achievements, add_achievement, grant_achievement, revoke_achievement, get_user_achievements, update_achievement
 from plugins.bank.db import get_balance
@@ -18,11 +18,11 @@ def register_handlers(context) -> Router:
         log_command_usage("predlojka", "achievements", message)
         achievements = await get_all_achievements()
         if not achievements:
-            await message.reply("Пока что никаких достижений нет. (;￣▽￣)")
+            await message.reply(TEXT("empty_achievments_db"))
         else:
-            response = "А вот и все доступные вам достижения:\n"
+            response = TEXT("ach_msg/all/head")
             for ach in achievements:
-                response += f"- {ach['name']} (код: {ach['code']}): {ach['description']}\n"
+                response += TEXT("ach_msg/all/body", name=ach['name'], code=ach['code'], desc=ach['description'])
             await message.reply(response)
 
     @router.message(Command("me"))
@@ -33,9 +33,9 @@ def register_handlers(context) -> Router:
         balance = await get_balance(user_id)
 
         if achievements:
-            achievements_text = "Ваши достижения:\n"
+            achievements_text = TEXT("ach_msg/me/head")
             for ach in achievements:
-                achievements_text += f"- {ach['name']}: {ach['description']} (получено: {ach['obtained_at']})\n"   # TODO: в texts.json
+                achievements_text += TEXT("ach_msg/me/body", name=ach['name'], desc=ach['description'], obtained_at=ach['obtained_at'])
         else:
             achievements_text = TEXT("no_achievements_yet")
 
@@ -58,7 +58,7 @@ def register_handlers(context) -> Router:
             await message.reply(TEXT("achievement_created").format(name=name, code=code))
             log_event("achievement_created", bot="predlojka", user_id=message.from_user.id, chat_id=message.chat.id, metadata={"achievement_code": code})
         except ValueError:
-            await message.reply("Формат:\n/add_achievement code | name | description")   # TODO: в texts.json
+            await message.reply(TEXT("err", "wrong_format/add_achievement"))
 
     @router.message(Command("grant_achievement"))
     async def grant_achievement_command(message: Message):
@@ -80,7 +80,7 @@ def register_handlers(context) -> Router:
                 metadata={"target_user_id": user_id, "achievement_code": achievement_code},
             )
         except ValueError:
-            await message.reply("Формат:\n/grant_achievement user_id | achievement_code")  # TODO: в texts.json
+            await message.reply(TEXT("err", "wrong_format/grant_achievement"))
 
     @router.message(Command("revoke_achievement"))
     async def revoke_achievement_command(message: Message):
@@ -102,7 +102,7 @@ def register_handlers(context) -> Router:
                 metadata={"target_user_id": user_id, "achievement_code": achievement_code},
             )
         except ValueError:
-            await message.reply("Формат:\n/revoke_achievement user_id | achievement_code")  # TODO: в texts.json
+            await message.reply(TEXT("err", "wrong_format/revoke_achievement"))
 
     @router.message(Command("add_conditions"))
     async def add_conditions_command(message: Message):
@@ -123,6 +123,6 @@ def register_handlers(context) -> Router:
                 metadata={"achievement_code": achievement_code},
             )
         except ValueError:
-            await message.reply("Формат:\n/add_conditions achievement_code | conditions")
+            await message.reply(TEXT("err", "wrong_format/add_conditions"))
 
     return router

@@ -8,7 +8,7 @@ import aiohttp
 import asyncio
 from yandex_ai_studio_sdk import AIStudio
 
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 
 
 def get_fallback_message() -> str:

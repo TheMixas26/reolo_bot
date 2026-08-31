@@ -1,7 +1,41 @@
 {
     "achievement_created": "Достижение '{name}' добавлено с кодом '{code}'! (・ω・)ゞ",
 
-    "no_achievements_yet": "У вас нет достижений. Надеюсь, что это только временное явление!)",
+    "no_achievements_yet": [
+        "У вас нет достижений. Надеюсь, что это только временное явление!)",
+        "Пока что никаких достижений у вас нет. (;￣▽￣)"
+    ],
 
-    "new_achievment": "🎉 Поздравляю вас! Вы получили новое достижение: {name} - {desc}"
+    "err": {
+        "wrong_format": {
+
+            "add_achievement": "Формат:\n/add_achievement code | name | description",
+            "grant_achievement": "Формат:\n/grant_achievement user_id | achievement_code",
+            "revoke_achievement": "Формат:\n/revoke_achievement user_id | achievement_code",
+            "add_conditions": "Формат:\n/add_conditions achievement_code | conditions"
+
+        }
+    },
+
+    "empty_achievments_db": "Пока что никаких достижений нет. (;￣▽￣)",
+
+    "new_achievment": "🎉 Поздравляю вас! Вы получили новое достижение: {name} - {desc}",
+
+    "ach_msg": {
+
+        "me": {
+            
+            "head": "Ваши достижения:\n",
+            "body": "- {name}: {desc} ({obtained_at})\n"
+
+        },
+
+        "all": {
+
+            "head": "А вот и все доступные вам достижения:\n",
+            "body": "- {name} (код: {code}): {desc}\n"
+
+        }
+
+    }
 }

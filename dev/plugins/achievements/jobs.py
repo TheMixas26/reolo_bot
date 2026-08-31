@@ -2,7 +2,7 @@ from core.core_plugin.stats import log_event
 from database.sqlite_db import get_all_users
 from .db import get_user_achievements, grant_achievement, get_achievement_by_code
 
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 
 async def check_achievements(context):
     """Проверяет, не заслужил ли кто-то новое достижение, и если да, то выдаёт его и отправляет уведомление"""

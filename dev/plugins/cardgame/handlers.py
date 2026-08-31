@@ -1,5 +1,5 @@
 from __future__ import annotations
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 import asyncio
 from core.core_plugin.stats import log_event, log_command_usage
 from database.sqlite_db import create_user_if_missing

@@ -1,6 +1,6 @@
 from settings import render_text_template
 from core.core_plugin.stats import log_command_usage, log_event
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from aiogram.types import BotCommand, BotCommandScopeChat
 from pathlib import Path
 

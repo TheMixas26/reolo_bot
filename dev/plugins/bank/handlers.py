@@ -4,7 +4,7 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKey
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from core.core_plugin.stats import log_command_usage, log_event
 from .service import edit_currency_info, view_currency_info, send_money, bank_get_balance, get_money
 

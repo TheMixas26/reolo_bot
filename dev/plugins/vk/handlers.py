@@ -1,5 +1,5 @@
 from __future__ import annotations
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from core.core_plugin.stats import log_event
 from plugins.predlojka.handlers import submit_external_post
 from plugins.predlojka.classes import PostParser

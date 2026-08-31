@@ -1,0 +1,1 @@
+from .dialogue_loader import TEXT

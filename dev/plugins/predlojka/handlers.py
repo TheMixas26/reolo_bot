@@ -9,7 +9,7 @@ import random
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 
 from core.core_plugin.stats import log_event, log_command_usage
 from database.scheduled_posts_db import create_scheduled_post
@@ -511,6 +511,7 @@ def _log_submission(message, content: SubmissionContent, *, event_type: str, con
 
 
 async def _send_admin_preview(message, content: SubmissionContent, publish_text: str) -> None:
+    admin_message = None
     markup = _build_moderation_markup(is_question=content.is_question)
     platform_post = _build_platform_post_from_message(message, content)
     preview_caption = publish_text or _compose_publish_text(content, _display_name(message.from_user))
@@ -531,38 +532,58 @@ async def _send_admin_preview(message, content: SubmissionContent, publish_text:
         "post_data": _serialize_post(platform_post),
     }
 
-    if message.content_type == "text":
-        admin_message = await _bot_call(
-            "send_message",
-            admin,
-            f"{_preview_title(content, message.content_type)}\n\n{preview_formatted_text}",
-            reply_markup=markup,
-            parse_mode=preview_parse_mode,
-        )
-    elif message.content_type == "sticker":
-        payload["file_id"] = message.sticker.file_id
-        admin_message = await _bot_call("send_sticker", admin, message.sticker.file_id, reply_markup=markup)
-        helper = await _bot_call("send_message", admin, preview_formatted_text, reply_to_message_id=admin_message.message_id, parse_mode=preview_parse_mode)
-        payload["helper_message_id"] = helper.message_id
-    elif message.content_type == "photo":
-        payload["file_id"] = message.photo[-1].file_id
-        admin_message = await _bot_call("send_photo", admin, message.photo[-1].file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
-    elif message.content_type == "video":
-        payload["file_id"] = message.video.file_id
-        admin_message = await _bot_call("send_video", admin, message.video.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
-    elif message.content_type == "document":
-        payload["file_id"] = message.document.file_id
-        admin_message = await _bot_call("send_document", admin, message.document.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
-    elif message.content_type == "audio":
-        payload["file_id"] = message.audio.file_id
-        admin_message = await _bot_call("send_audio", admin, message.audio.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
-    elif message.content_type == "voice":
-        payload["file_id"] = message.voice.file_id
-        admin_message = await _bot_call("send_voice", admin, message.voice.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
-    else:
-        raise ValueError(f"Неподдерживаемый тип контента: {message.content_type}")
+    try:
+        if message.content_type == "text":
+            admin_message = await _bot_call(
+                "send_message",
+                admin,
+                f"{_preview_title(content, message.content_type)}\n\n{preview_formatted_text}",
+                reply_markup=markup,
+                parse_mode=preview_parse_mode,
+            )
+        elif message.content_type == "sticker":
+            payload["file_id"] = message.sticker.file_id
+            admin_message = await _bot_call("send_sticker", admin, message.sticker.file_id, reply_markup=markup)
+            helper = await _bot_call("send_message", admin, preview_formatted_text, reply_to_message_id=admin_message.message_id, parse_mode=preview_parse_mode)
+            payload["helper_message_id"] = helper.message_id
+        elif message.content_type == "photo":
+            payload["file_id"] = message.photo[-1].file_id
+            admin_message = await _bot_call("send_photo", admin, message.photo[-1].file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        elif message.content_type == "video":
+            payload["file_id"] = message.video.file_id
+            admin_message = await _bot_call("send_video", admin, message.video.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        elif message.content_type == "document":
+            payload["file_id"] = message.document.file_id
+            admin_message = await _bot_call("send_document", admin, message.document.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        elif message.content_type == "audio":
+            payload["file_id"] = message.audio.file_id
+            admin_message = await _bot_call("send_audio", admin, message.audio.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        elif message.content_type == "voice":
+            payload["file_id"] = message.voice.file_id
+            admin_message = await _bot_call("send_voice", admin, message.voice.file_id, caption=preview_formatted_text, reply_markup=markup, parse_mode=preview_parse_mode)
+        else:
+            raise ValueError(f"Неподдерживаемый тип контента: {message.content_type}")
+    except Exception as error:
+        logger.error(f"Не удалось отправить превью админу: {error}", exc_info=True)
+        # fallback: try to copy the original message and send a simple text summary
+        try:
+            copied = await _copy_single_message_to_admin(message)
+            admin_message = await _bot_call(
+                "send_message",
+                admin,
+                f"{_preview_title(content, message.content_type)}\n\n{preview_formatted_text}",
+                reply_to_message_id=copied.message_id if copied else None,
+            )
+        except Exception as err2:
+            logger.error(f"Fallback preview to admin also failed: {err2}", exc_info=True)
+            admin_message = None
 
-    moderation_queue[admin_message.message_id] = payload
+    if admin_message is not None:
+        moderation_queue[admin_message.message_id] = payload
+    else:
+        # As last resort, store payload under a synthetic key so it won't be lost
+        fallback_key = int(datetime.now().timestamp())
+        moderation_queue[fallback_key] = payload
 
 
 async def _send_external_admin_preview(post: Post) -> None:
@@ -1110,6 +1131,14 @@ async def _submit_single_message(message) -> None:
 
 async def accepter(message):
     ensure_user_exists(message.from_user)
+
+    # If admin started a broadcast and is now sending the broadcast text,
+    # avoid intercepting that message here so admin_utils can handle it.
+    try:
+        if plugin_context is not None and getattr(plugin_context, "broadcast_waiting_for", None) == getattr(getattr(message, "from_user", None), "id", None):
+            return
+    except Exception:
+        pass
 
     # if message.content_type == "text" and message.text.startswith("/"):
     #     predlojka_bot.reply_to(message, "Боюсь, такой команды я не знаю... (｡•́︿•̀｡)")

@@ -12,7 +12,7 @@ from aiogram.types import (
 )
  
 from core.core_plugin.stats import log_command_usage, log_event
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
  
 from . import service
  
@@ -266,6 +266,10 @@ def register_handlers(context) -> Router:
         await bot.edit_message_reply_markup(chat_id=game.chat_id, message_id=game.status_message_id, reply_markup=None)
         await deal_roles(game)
         game.timer_task = asyncio.create_task(run_game_loop(game))
+
+    @router.message(Command("mafia"), F.chat.id != chat_mishas_den)
+    async def wrong_mafia_call(message: Message):
+        await message.reply(TEXT("mafia", "pls_call_from_chat")) 
  
     @router.message(Command("mafia_stop"), F.chat.id == chat_mishas_den)
     async def cmd_stop(message: Message):

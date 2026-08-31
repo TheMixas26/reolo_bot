@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.core_plugin.stats import log_event
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from database.sqlite_db import user_exists
 from .db import get_balance, set_balance
 from settings import BANK_TRANSFER_COMMISSION, CURRENCY_NAME_GENITIVE

@@ -3,7 +3,7 @@ from aiogram.filters import Command
 
 from core.core_plugin.stats import log_command_usage
 from .jobs import send_weather
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 
 
 def register_handlers(context):

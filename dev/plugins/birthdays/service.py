@@ -7,7 +7,7 @@ from .db import (
 )
 from datetime import datetime
 from random import randint
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 
 
 BIRTHDAY_TABLE = "birthdays"

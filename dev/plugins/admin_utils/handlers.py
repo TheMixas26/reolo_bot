@@ -8,7 +8,7 @@ from aiogram.types import FSInputFile, Message
 
 from .jobs import backupDB
 from .service import set_commands
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from core.core_plugin.stats import log_command_usage, log_event
 from database.sqlite_db import get_all_users
 
@@ -99,6 +99,11 @@ def register_handlers(context) -> Router:
             return
         log_command_usage("predlojka", "broadcast", message)
         await message.reply(TEXT("broadcast_start"))
+        # mark context so other plugins (eg. predlojka) won't intercept the admin's next message
+        try:
+            setattr(context, "broadcast_waiting_for", message.from_user.id)
+        except Exception:
+            pass
         await state.set_state(AdminStates.waiting_for_broadcast)
 
     @router.message(AdminStates.waiting_for_broadcast)
@@ -125,7 +130,15 @@ def register_handlers(context) -> Router:
         except Exception as error:
             await message.reply(f"(╥﹏╥) Ошибка при рассылке: {error}")
         finally:
-            await state.clear()
+            try:
+                await state.clear()
+            finally:
+                # clear context flag if set
+                try:
+                    if getattr(context, "broadcast_waiting_for", None) == message.from_user.id:
+                        setattr(context, "broadcast_waiting_for", None)
+                except Exception:
+                    pass
 
     @router.message(Command("send_actual_db"))
     async def send_actual_db(message: Message):

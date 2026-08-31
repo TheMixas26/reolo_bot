@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from core.core_plugin.stats import log_command_usage, log_event
-from varibles.dialogue_loader import TEXT
+from varibles import TEXT
 from .service import (
     add_birthday,
     add_birthday_by_username,
@@ -31,7 +31,7 @@ def register_handlers(context) -> Router:
             parts = message.text.split()
             if message.reply_to_message:
                 if len(parts) != 2:
-                    await message.reply(TEXT("err", "wrong_reply_format"))
+                    await message.reply(TEXT("err", "wrong_reply_bday_format"))
                     return
                 target = message.reply_to_message.from_user
                 date_str = parts[1]
@@ -51,7 +51,7 @@ def register_handlers(context) -> Router:
                 return
 
             if len(parts) < 3:
-                await message.reply(TEXT("err", "wrong_format_by_us"))
+                await message.reply(TEXT("err", "wrong_bday_format_by_us"))
                 return
             username = parts[1].lstrip("@")
             date_str = parts[2]
@@ -77,7 +77,7 @@ def register_handlers(context) -> Router:
         try:
             parts = message.text.split()
             if len(parts) != 2:
-                await message.reply(TEXT("err", "wrong_format"))
+                await message.reply(TEXT("err", "wrong_bday_format"))
                 return
             date_str = parts[1]
             user_id = message.from_user.id
