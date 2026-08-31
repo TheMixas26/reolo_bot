@@ -141,7 +141,7 @@ def format_weather_message(forecast_data: list[dict]) -> str:
     Отформатировать сообщение с прогнозом погоды.
     """
     if not forecast_data:
-        return TEXT("err", "no_forecast_data")
+        return TEXT("err/no_forecast_data")
 
     current_time = datetime.now().strftime("%H:%M")
     message = TEXT("weather_message", "title", current_time=current_time)
@@ -152,7 +152,7 @@ def format_weather_message(forecast_data: list[dict]) -> str:
         wind = round(forecast["wind_speed"], 1)
         icon = forecast["icon"]
 
-        message += TEXT("weather_message", "hour_info", hour=hour, icon=icon, temp=temp)
+        message += TEXT("weather_message/hour_info", hour=hour, icon=icon, temp=temp)
 
     temps = [f["temperature"] for f in forecast_data]
     if temps:
@@ -162,8 +162,8 @@ def format_weather_message(forecast_data: list[dict]) -> str:
 
 
         # НЕ ДАЙ БОГ!!!! эта херь не будет работать
-        message += TEXT("weather_message", "period", start=f"{forecast_data[0]['hour']:02d}", final=f"{forecast_data[-1]['hour']:02d}")
-        message += TEXT("weather_message", "temp_info", max_temp=max_temp, min_temp=min_temp, avg_temp=avg_temp)
+        message += TEXT("weather_message/period", start=f"{forecast_data[0]['hour']:02d}", final=f"{forecast_data[-1]['hour']:02d}")
+        message += TEXT("weather_message/temp_info", max_temp=max_temp, min_temp=min_temp, avg_temp=avg_temp)
 
     return message
 
