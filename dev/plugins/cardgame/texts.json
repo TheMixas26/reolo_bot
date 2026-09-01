@@ -1,3 +1,14 @@
 {
-    "testing_text": "some text"
+    "cg_btn_close": "Закрыть",
+    "cg_btn_accept": "Принять",
+    "cg_btn_decline": "Отклонить",
+    "cg_btn_cancel_challenge": "Отменить вызов",
+    "cg_btn_reset_selection": "Сбросить выбор",
+    "cg_btn_ready": "Готово",
+    "cg_btn_attack": "Атаковать",
+    "cg_btn_defend": "Защищаться",
+    "cg_btn_cancel_battle": "Отменить бой",
+    "cg_btn_choose_another": "Выбрать другую карту",
+    "cg_btn_back": "Назад"
+
 }
