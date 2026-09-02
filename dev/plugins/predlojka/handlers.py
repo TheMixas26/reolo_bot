@@ -241,10 +241,11 @@ async def _acknowledge_submission(message, content: SubmissionContent, user_name
 
 
 def _build_direct_message_markup() -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    markup.add(types.InlineKeyboardButton("Ответить в ЛС", callback_data="dm:reply"))
-    markup.add(types.InlineKeyboardButton("Закрыть", callback_data="dm:close"))
-    return markup
+    keyboard = [
+        [types.InlineKeyboardButton("Ответить в ЛС", callback_data="dm:reply")],
+        [types.InlineKeyboardButton("Закрыть", callback_data="dm:close")],
+    ]
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def _author_line(message, content: SubmissionContent, user_name: str) -> str:
     if content.is_anonymous and content.route != "message":
@@ -463,17 +464,18 @@ def _build_question_answer_post(payload: dict, answer_text: str) -> str:
 
 
 def _build_moderation_markup(*, is_album: bool = False, is_question: bool = False) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     approve_callback = "mod_album:approve" if is_album else "mod:approve"
     reject_callback = "mod_album:reject" if is_album else "mod:reject"
     draft_callback = "mod_album:draft" if is_album else "mod:draft"
     schedule_callback = "mod_album:schedule" if is_album else "mod:schedule"
     approve_label = "Ответить и опубликовать" if is_question and not is_album else "Опубликовать"
-    markup.add(types.InlineKeyboardButton(approve_label, callback_data=approve_callback))
-    markup.add(types.InlineKeyboardButton("Отклонить", callback_data=reject_callback))
-    markup.add(types.InlineKeyboardButton("В черновик", callback_data=draft_callback))
-    markup.add(types.InlineKeyboardButton("Запланировать", callback_data=schedule_callback))
-    return markup
+    keyboard = [
+        [types.InlineKeyboardButton(approve_label, callback_data=approve_callback)],
+        [types.InlineKeyboardButton("Отклонить", callback_data=reject_callback)],
+        [types.InlineKeyboardButton("В черновик", callback_data=draft_callback)],
+        [types.InlineKeyboardButton("Запланировать", callback_data=schedule_callback)],
+    ]
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def _preview_title_for_post(post: Post) -> str:

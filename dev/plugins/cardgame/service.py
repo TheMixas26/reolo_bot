@@ -112,99 +112,102 @@ def _log_battle_finished(session, *, chat_id: int, trigger_user_id: int) -> None
 
 
 def build_pack_keyboard(packs: list[dict]) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+    keyboard: list[list[types.InlineKeyboardButton]] = []
     for pack in packs:
-        markup.add(types.InlineKeyboardButton(f"{pack['name']} — {pack['price']} IB", callback_data=f"cg_pack:{pack['id']}"))
-    markup.add(types.InlineKeyboardButton(TEXT("cg_btn_close"), callback_data="cg_pack_cancel"))
-    return markup
+        keyboard.append([types.InlineKeyboardButton(f"{pack['name']} — {pack['price']} IB", callback_data=f"cg_pack:{pack['id']}")])
+    keyboard.append([types.InlineKeyboardButton(TEXT("cg_btn_close"), callback_data="cg_pack_cancel")])
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def build_invite_keyboard() -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    markup.row(
-        types.InlineKeyboardButton(TEXT("cg_btn_accept"), callback_data="cg_invite_accept"),
-        types.InlineKeyboardButton(TEXT("cg_btn_decline"), callback_data="cg_invite_decline"),
-    )
-    markup.add(types.InlineKeyboardButton(TEXT("cg_btn_cancel_challenge"), callback_data="cg_invite_cancel"))
-    return markup
+    keyboard = [
+        [
+            types.InlineKeyboardButton(TEXT("cg_btn_accept"), callback_data="cg_invite_accept"),
+            types.InlineKeyboardButton(TEXT("cg_btn_decline"), callback_data="cg_invite_decline"),
+        ],
+        [types.InlineKeyboardButton(TEXT("cg_btn_cancel_challenge"), callback_data="cg_invite_cancel")],
+    ]
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def build_duel_selection_keyboard(cards: list[dict]) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+    keyboard: list[list[types.InlineKeyboardButton]] = []
     for card in cards:
-        markup.add(
+        keyboard.append([
             types.InlineKeyboardButton(
                 f"{card['name']} ({get_rarity_label(card['rarity'])})",
                 callback_data=f"cg_pick:{card['id']}",
             )
-        )
-    markup.add(types.InlineKeyboardButton(TEXT("cg_btn_cancel_challenge"), callback_data="cg_invite_cancel"))
-    return markup
+        ])
+    keyboard.append([types.InlineKeyboardButton(TEXT("cg_btn_cancel_challenge"), callback_data="cg_invite_cancel")])
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def build_team_selection_keyboard(cards: list[dict], selected_counts: dict[int, int], *, can_ready: bool) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+    keyboard: list[list[types.InlineKeyboardButton]] = []
     for card in cards:
         owned_amount = int(card.get("amount", 1))
         selected_amount = selected_counts.get(int(card["id"]), 0)
         remaining_amount = owned_amount - selected_amount
         if remaining_amount <= 0:
             continue
-        markup.add(
+        keyboard.append([
             types.InlineKeyboardButton(
                 f"{card['name']} ({get_rarity_label(card['rarity'])}) x{remaining_amount}",
                 callback_data=f"cg_pick:{card['id']}",
             )
-        )
+        ])
     ready_callback = "cg_pick_ready" if can_ready else "cg_pick_wait"
-    markup.row(
+    keyboard.append([
         types.InlineKeyboardButton(TEXT("cg_btn_reset_selection"), callback_data="cg_pick_reset"),
         types.InlineKeyboardButton(TEXT("cg_btn_ready"), callback_data=ready_callback),
-    )
-    markup.add(types.InlineKeyboardButton(TEXT("cg_btn_cancel_challenge"), callback_data="cg_invite_cancel"))
-    return markup
+    ])
+    keyboard.append([types.InlineKeyboardButton(TEXT("cg_btn_cancel_challenge"), callback_data="cg_invite_cancel")])
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def build_duel_action_keyboard() -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    markup.row(
-        types.InlineKeyboardButton(TEXT("cg_btn_attack"), callback_data="cg_duel_action:attack"),
-        types.InlineKeyboardButton(TEXT("cg_btn_defend"), callback_data="cg_duel_action:defend"),
-    )
-    markup.add(types.InlineKeyboardButton(TEXT("cg_btn_cancel_battle"), callback_data="cg_battle_cancel"))
-    return markup
+    keyboard = [
+        [
+            types.InlineKeyboardButton(TEXT("cg_btn_attack"), callback_data="cg_duel_action:attack"),
+            types.InlineKeyboardButton(TEXT("cg_btn_defend"), callback_data="cg_duel_action:defend"),
+        ],
+        [types.InlineKeyboardButton(TEXT("cg_btn_cancel_battle"), callback_data="cg_battle_cancel")],
+    ]
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def build_team_actor_keyboard(cards) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+    keyboard: list[list[types.InlineKeyboardButton]] = []
     for card in cards:
-        markup.add(types.InlineKeyboardButton(card.name, callback_data=f"cg_team_actor:{card.instance_id}"))
-    markup.add(types.InlineKeyboardButton(TEXT("cg_btn_cancel_battle"), callback_data="cg_battle_cancel"))
-    return markup
+        keyboard.append([types.InlineKeyboardButton(card.name, callback_data=f"cg_team_actor:{card.instance_id}")])
+    keyboard.append([types.InlineKeyboardButton(TEXT("cg_btn_cancel_battle"), callback_data="cg_battle_cancel")])
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def build_team_action_keyboard() -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
-    markup.row(
-        types.InlineKeyboardButton(TEXT("cg_btn_attack"), callback_data="cg_team_action:attack"),
-        types.InlineKeyboardButton(TEXT("cg_btn_defend"), callback_data="cg_team_action:defend"),
-    )
-    markup.row(
-        types.InlineKeyboardButton(TEXT("cg_btn_choose_another"), callback_data="cg_team_action:back"),
-        types.InlineKeyboardButton(TEXT("cg_btn_cancel_battle"), callback_data="cg_battle_cancel"),
-    )
-    return markup
+    keyboard = [
+        [
+            types.InlineKeyboardButton(TEXT("cg_btn_attack"), callback_data="cg_team_action:attack"),
+            types.InlineKeyboardButton(TEXT("cg_btn_defend"), callback_data="cg_team_action:defend"),
+        ],
+        [
+            types.InlineKeyboardButton(TEXT("cg_btn_choose_another"), callback_data="cg_team_action:back"),
+            types.InlineKeyboardButton(TEXT("cg_btn_cancel_battle"), callback_data="cg_battle_cancel"),
+        ],
+    ]
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def build_team_target_keyboard(cards) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+    keyboard: list[list[types.InlineKeyboardButton]] = []
     for card in cards:
-        markup.add(types.InlineKeyboardButton(card.name, callback_data=f"cg_team_target:{card.instance_id}"))
-    markup.row(
+        keyboard.append([types.InlineKeyboardButton(card.name, callback_data=f"cg_team_target:{card.instance_id}")])
+    keyboard.append([
         types.InlineKeyboardButton(TEXT("cg_btn_back"), callback_data="cg_team_action:back"),
         types.InlineKeyboardButton(TEXT("cg_btn_cancel_battle"), callback_data="cg_battle_cancel"),
-    )
-    return markup
+    ])
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 @dataclass
 class PackFlow:
