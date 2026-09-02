@@ -55,6 +55,7 @@ async def backupDB(context):
                 f"pg_dump завершился успешно, но файл {db_backup_path} не найден"
             )
 
+        # TODO: texts.json
         await send_backup_file(
             db_backup_path,
             db_backup_path.name,
@@ -62,6 +63,7 @@ async def backupDB(context):
         )
 
         if EVENTS_LOG_PATH.exists():
+            # TODO: texts.json
             await send_backup_file(
                 EVENTS_LOG_PATH,
                 f"bot_events_{date_str}.jsonl",
@@ -70,6 +72,7 @@ async def backupDB(context):
 
         if summary_path.exists():
             await send_backup_file(
+                # TODO: texts.json
                 summary_path,
                 f"bot_stats_summary_{date_str}.txt",
                 f"📈 Сводка аналитики за {date_str}",
@@ -82,6 +85,7 @@ async def backupDB(context):
         error_type = type(e).__name__
         panic_level = "🟡" if "FileNotFound" in error_type else "🔴"
 
+        # TODO: texts.json
         panic_message = f"""
             {panic_level} АААААА!!!! {panic_level}
 

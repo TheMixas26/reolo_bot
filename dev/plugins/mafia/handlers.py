@@ -13,6 +13,7 @@ from aiogram.types import (
  
 from core.core_plugin.stats import log_command_usage, log_event
 from varibles import TEXT
+from core import games
  
 from . import service
  
@@ -221,12 +222,15 @@ def register_handlers(context) -> Router:
                 winner = game.check_winner()
                 if winner:
                     await finish_game(game, winner)
+                    games.release(game.chat_id, "mafia")
                     return
         except asyncio.CancelledError:
             logger.say("Партия прервана вручную.", "warn")
+            games.release(game.chat_id.chat.id, "mafia")
             raise
         except Exception as e:
             logger.say(f"Мафия упала с ошибкой: {e}", "error")
+            games.release(game.chat_id.chat.id, "mafia")
             service.remove_game(game.chat_id)
  
     # ------------------
@@ -236,36 +240,43 @@ def register_handlers(context) -> Router:
     @router.message(Command("mafia"), F.chat.id == chat_mishas_den)
     async def cmd_start_lobby(message: Message):
         log_command_usage("predlojka", "mafia_start", message)
- 
-        if service.get_game(message.chat.id):
-            await message.reply(TEXT("mafia", "already_running"))
-            return
- 
-        game = service.create_game(message.chat.id, started_by=message.from_user.id)
- 
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text=TEXT("mafia", "join_button"), callback_data="mafia:join")]]
-        )
-        status = await message.answer(
-            TEXT("mafia/lobby/open", seconds=service.LOBBY_SECONDS, min_players=service.MIN_PLAYERS),
-            reply_markup=keyboard,
-        )
-        game.status_message_id = status.message_id
- 
-        await asyncio.sleep(service.LOBBY_SECONDS)
- 
-        if len(game.players) < service.MIN_PLAYERS:
-            await bot.edit_message_text(
-                chat_id=game.chat_id,
-                message_id=game.status_message_id,
-                text=TEXT("mafia/not_enough_players", min_players=service.MIN_PLAYERS),
+
+        try:
+            games.claim(message.chat.id, "mafia")
+            if service.get_game(message.chat.id):
+                await message.reply(TEXT("mafia", "already_running"))
+                return
+    
+            game = service.create_game(message.chat.id, started_by=message.from_user.id)
+    
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text=TEXT("mafia", "join_button"), callback_data="mafia:join")]]
             )
-            service.remove_game(game.chat_id)
-            return
- 
-        await bot.edit_message_reply_markup(chat_id=game.chat_id, message_id=game.status_message_id, reply_markup=None)
-        await deal_roles(game)
-        game.timer_task = asyncio.create_task(run_game_loop(game))
+            status = await message.answer(
+                TEXT("mafia/lobby/open", seconds=service.LOBBY_SECONDS, min_players=service.MIN_PLAYERS),
+                reply_markup=keyboard,
+            )
+            game.status_message_id = status.message_id
+    
+            await asyncio.sleep(service.LOBBY_SECONDS)
+    
+            if len(game.players) < service.MIN_PLAYERS:
+                await bot.edit_message_text(
+                    chat_id=game.chat_id,
+                    message_id=game.status_message_id,
+                    text=TEXT("mafia/not_enough_players", min_players=service.MIN_PLAYERS),
+                )
+                service.remove_game(game.chat_id)
+                return
+    
+            await bot.edit_message_reply_markup(chat_id=game.chat_id, message_id=game.status_message_id, reply_markup=None)
+            await deal_roles(game)
+            game.timer_task = asyncio.create_task(run_game_loop(game))
+
+        except games.ChatBusyError as e:
+                    # TODO: texts.json
+                    await message.reply(f"Чат сейчас занят: {e.owner}. Дождитесь конца.")
+                    return
 
     @router.message(Command("mafia"), F.chat.id != chat_mishas_den)
     async def wrong_mafia_call(message: Message):
@@ -273,7 +284,10 @@ def register_handlers(context) -> Router:
  
     @router.message(Command("mafia_stop"), F.chat.id == chat_mishas_den)
     async def cmd_stop(message: Message):
+        # А точно ли у меня только админ должен игру стопать?...
+        # тут бы какую-нибудь систему по запоминанию того, кто игру начинал..
         if message.from_user.id != context.admin_id:
+            await message.reply(TEXT("not_an_admin"))
             return
  
         game = service.get_game(message.chat.id)
@@ -284,6 +298,7 @@ def register_handlers(context) -> Router:
         if game.timer_task:
             game.timer_task.cancel()
         service.remove_game(message.chat.id)
+        games.release(message.chat.id, "mafia")
         await message.reply(TEXT("mafia/stopped"))
  
     # ------------------

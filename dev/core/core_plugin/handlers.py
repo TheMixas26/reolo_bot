@@ -5,6 +5,7 @@ from aiogram.types import FSInputFile, Message
 from varibles import TEXT
 from settings import PROJECT_NAME, render_text_template
 from core.core_plugin.stats import log_command_usage, log_event
+from core.manifest import render_summary
 from database.sqlite_db import user_exists, create_user_if_missing
 from .service import get_changelog
 
@@ -47,5 +48,12 @@ def register_handlers(context) -> Router:
         except Exception as error:
             logger.error(error)
             await message.reply(text=TEXT("err", "help_command"))
+
+
+    @router.message(Command("plugins"))
+    async def plugins_command(message: Message):
+        log_command_usage("predlojka", "plugins", message)
+        text = await render_summary()
+        await message.reply(text)
 
     return router

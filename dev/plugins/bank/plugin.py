@@ -1,8 +1,23 @@
 from .handlers import register_handlers
+from core.manifest import PluginManifest, register_manifest
 
+MANIFEST = register_manifest(PluginManifest(
+        name="Bank plugin",
+        persona="Казначей",
+        summary="Буквально банковский плагин",
+        tags=("fun", "stats",),
+        touches=(
+            "своя БД",
+            "свой бот",
+            # smth else...
+        ),
+        permission="public",
+        monopoly=False,
+    ))
 
 class BankPlugin:
-    name = "bank"
+    # TODO: засунуть это куда-нибудь, оно не используется сейчас
+    manifest=MANIFEST
 
     @staticmethod
     def setup(context):

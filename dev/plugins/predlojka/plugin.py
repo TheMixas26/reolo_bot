@@ -1,8 +1,25 @@
 from .handlers import register_handlers
 from .jobs import publish_due_scheduled_posts
+from core.manifest import PluginManifest, register_manifest
 
+MANIFEST = register_manifest(PluginManifest(
+        name="Predlojka MAIN",
+        persona="Варя",
+        summary="Главный плагин модерации",
+        tags=("moderation", "admin",),
+        touches=(
+            "основной хендлер предложки",
+            "регистрация тегов",
+            # smth else...
+        ),
+        permission="public",
+        monopoly=False,
+    ))
 
 class PredlojkaPlugin:
+    # TODO: засунуть это куда-нибудь, оно не используется сейчас
+    manifest=MANIFEST
+
     @staticmethod
     def register_handlers(context):
         router = register_handlers(context)

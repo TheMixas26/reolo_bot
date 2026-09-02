@@ -1,5 +1,20 @@
 from threading import Thread
 from .handlers import run_vk_listener
+from core.manifest import PluginManifest, register_manifest
+
+MANIFEST = register_manifest(PluginManifest(
+        name="VK",
+        persona="Варя",
+        summary="Работа с ВК",
+        tags=("moderation",),
+        touches=(
+            "основной хендлер предложки",
+            "пересылка постов",
+            # smth else...
+        ),
+        permission="public",
+        monopoly=False,
+    ))
 
 class VKPlugin:
     

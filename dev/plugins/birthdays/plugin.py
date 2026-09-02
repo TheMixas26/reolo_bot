@@ -1,7 +1,25 @@
 from .service import send_daily_birthdays, send_personal_birthday_notifications, send_birthday_congratulation
 from .handlers import register_handlers
+from core.manifest import PluginManifest, register_manifest
+
+MANIFEST = register_manifest(PluginManifest(
+        name="Birtdays",
+        persona="Никитос",
+        summary="Поздравления с др",
+        tags=("fun", "stats",),
+        touches=(
+            "собирает дни рождения",
+            "своя БД",
+            "высылает поздравления в ЛС / канал"
+            # smth else...
+        ),
+        permission="public",
+        monopoly=False,
+    ))
 
 class BirthdaysPlugin:
+    # TODO: засунуть это куда-нибудь, оно не используется сейчас
+    manifest=MANIFEST
 
     @staticmethod
     def register_jobs(context):

@@ -61,7 +61,7 @@ def TEXT(*keys, **kwargs):
     """Получить строку локализации.
 
     Функция поддерживает:
-        TEXT("a", "b")
+        TEXT("a", "b", name=name)
         TEXT("a", "b/c")
         TEXT("a/b/c")
         TEXT("a/b", "c/d")
@@ -97,7 +97,10 @@ load_texts()
 
 
 def see_drama_script():
-    """Обожаю себя, функция бьуквально называется увидеть сценарий пьесы...."""
+    """
+    Create all_texts.json file with all dictonaries.
+    """
+    # Обожаю себя, функция бьуквально называется увидеть сценарий пьесы....
     load_texts()
     with open("all_texts.json", "w", encoding="utf-8") as file:
         json.dump(DIALOGS, file, ensure_ascii=False, indent=4)

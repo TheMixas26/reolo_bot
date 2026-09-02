@@ -338,6 +338,7 @@ def format_card_catalog(cards: list[dict]) -> str:
 
 def format_pack_menu(packs: list[dict], balance: int) -> str:
     lines = [
+        # TODO: texts.json
         "🎁 <b>Выберите пак для открытия</b>",
         "",
         f"Ваш баланс: <b>{balance}</b> {CURRENCY_NAME_GENITIVE}",
@@ -352,6 +353,7 @@ def format_pack_menu(packs: list[dict], balance: int) -> str:
 def format_pack_animation_frame(pack_name: str, step: int, total_steps: int) -> str:
     filled = "■" * step
     empty = "□" * max(0, total_steps - step)
+    # TODO: texts.json
     phrases = {
         1: "Пак ложится на стол...",
         2: "Фольга трещит и раскрывается...",
@@ -363,6 +365,7 @@ def format_pack_animation_frame(pack_name: str, step: int, total_steps: int) -> 
 
 
 def format_pack_result(pack_name: str, cards: list[dict], balance: int | None = None) -> str:
+    # TODO: texts.json
     lines = [f"✨ <b>Пак «{escape(pack_name)}» открыт!</b>"]
     if balance is not None:
         lines.append(f"Остаток: <b>{balance}</b> {CURRENCY_NAME_GENITIVE}")
@@ -372,13 +375,16 @@ def format_pack_result(pack_name: str, cards: list[dict], balance: int | None = 
 
 
 def format_wallet(balance: int) -> str:
+    # TODO: texts.json
     return f"💰 Ваш карточный бюджет: <b>{balance}</b> {CURRENCY_NAME_GENITIVE}"
 
 
 def format_event_list(events: list[dict]) -> str:
     if not events:
+        # TODO: texts.json
         return "Сейчас активных карточных ивентов нет."
 
+    # TODO: texts.json
     lines = ["🏛 <b>Активные карточные ивенты:</b>", ""]
     for event in events:
         description = f"\n{escape(event['description'])}" if event.get("description") else ""
@@ -389,8 +395,10 @@ def format_event_list(events: list[dict]) -> str:
 
 def format_admin_event_list(events: list[dict]) -> str:
     if not events:
+        # TODO: texts.json
         return "Карточных ивентов пока нет."
 
+    # TODO: texts.json
     lines = ["Ивенты карточной игры:"]
     for event in events:
         lines.append(f"#{event['id']} [{event['status']}] {event['title']} — {event['reward']} {CURRENCY_SHORT_NAME}")
@@ -399,17 +407,22 @@ def format_admin_event_list(events: list[dict]) -> str:
 
 def format_admin_pack_list(packs: list[dict]) -> str:
     if not packs:
+        # TODO: texts.json
         return "Паков пока нет."
 
+    # TODO: texts.json
     lines = ["Паки карточной игры:"]
     for pack in packs:
+        # TODO: texts.json
         status = "активен" if pack["is_active"] else "скрыт"
         lines.append(f"#{pack['id']} {pack['name']} — {pack['price']} {CURRENCY_SHORT_NAME} ({status})")
     return "\n".join(lines)
 
 
 def format_invite(lobby: "ChallengeLobby") -> str:
+    # TODO: texts.json
     mode_title = "дуэль" if lobby.mode == "duel" else "командный бой"
+    # TODO: texts.json
     return (
         f"⚔️ <b>Вызов на {mode_title}</b>\n\n"
         f"{format_user_name(lobby.initiator_name)} вызывает {format_user_name(lobby.opponent_name)}.\n"
@@ -420,12 +433,14 @@ def format_invite(lobby: "ChallengeLobby") -> str:
 def format_selection_prompt(lobby: "ChallengeLobby", team_size: int) -> str:
     selector_id = lobby.current_selector_id()
     if selector_id is None:
+        # TODO: texts.json
         return "Ожидание выбора."
 
     selected_cards = lobby.get_selection(selector_id)
     selected_names = ", ".join(format_card_name(card) for card in selected_cards) if selected_cards else "ничего"
     target_count = 1 if lobby.mode == "duel" else team_size
     return (
+        # TODO: texts.json
         f"🃏 <b>Выбор карт</b>\n\n"
         f"Сейчас выбирает: {format_user_name(lobby.current_selector_name() or '')}\n"
         f"Нужно карт: {target_count}\n"
@@ -435,10 +450,12 @@ def format_selection_prompt(lobby: "ChallengeLobby", team_size: int) -> str:
 
 
 def format_lobby_ready(lobby: "ChallengeLobby") -> str:
+    # TODO: texts.json
     title = "Дуэль" if lobby.mode == "duel" else "Командный бой"
     left = ", ".join(str(card.get("name", "?")) for card in lobby.initiator_selection)
     right = ", ".join(str(card.get("name", "?")) for card in lobby.opponent_selection)
     return (
+        # TODO: texts.json
         f"⚔️ {title} начинается\n\n"
         f"{lobby.initiator_name}: {left}\n"
         f"{lobby.opponent_name}: {right}"
@@ -510,6 +527,7 @@ def _parse_update_fields(parts: list[str]) -> dict:
 def roll_card(user_id: int, pack_name: str | None = None):
     selected_pack = pack_name or next(iter(list_packs()), None)
     if selected_pack is None:
+        # TODO: texts.json
         raise ValueError("Нет доступных паков для открытия.")
     return open_pack(user_id, selected_pack)
 
@@ -521,13 +539,16 @@ def list_packs() -> list[str]:
 def purchase_and_open_pack(user_id: int, pack_id: int, *, pack_size: int = PACK_SIZE) -> tuple[dict, list[dict], int]:
     pack = get_pack_by_id(pack_id)
     if pack is None or not pack.get("is_active"):
+        # TODO: texts.json
         raise ValueError("Пак недоступен.")
     if not get_cards_by_category(pack["name"]):
+        # TODO: texts.json
         raise ValueError("В этом паке пока нет карт. Сначала добавьте их админской командой.")
 
     balance = int(get_balance(user_id))
     price = int(pack["price"])
     if balance < price:
+        # TODO: texts.json
         raise ValueError(f"Недостаточно средств. Нужно {price}, у вас {balance}.")
 
     set_balance(user_id, balance - price)
@@ -539,6 +560,7 @@ def open_pack(user_id: int, pack_name: str, *, pack_size: int = PACK_SIZE) -> li
     """Открывает конкретный пак и возвращает полученные карты."""
     pack_cards = get_cards_by_category(pack_name)
     if not pack_cards:
+        # TODO: texts.json
         raise ValueError(f"Пак «{pack_name}» не найден.")
 
     rarities = list(RARITY_WEIGHTS.keys())
