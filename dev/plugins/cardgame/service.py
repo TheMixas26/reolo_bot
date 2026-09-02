@@ -112,7 +112,7 @@ def _log_battle_finished(session, *, chat_id: int, trigger_user_id: int) -> None
 
 
 def build_pack_keyboard(packs: list[dict]) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     for pack in packs:
         markup.add(types.InlineKeyboardButton(f"{pack['name']} — {pack['price']} IB", callback_data=f"cg_pack:{pack['id']}"))
     markup.add(types.InlineKeyboardButton(TEXT("cg_btn_close"), callback_data="cg_pack_cancel"))
@@ -120,7 +120,7 @@ def build_pack_keyboard(packs: list[dict]) -> types.InlineKeyboardMarkup:
 
 
 def build_invite_keyboard() -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     markup.row(
         types.InlineKeyboardButton(TEXT("cg_btn_accept"), callback_data="cg_invite_accept"),
         types.InlineKeyboardButton(TEXT("cg_btn_decline"), callback_data="cg_invite_decline"),
@@ -130,7 +130,7 @@ def build_invite_keyboard() -> types.InlineKeyboardMarkup:
 
 
 def build_duel_selection_keyboard(cards: list[dict]) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     for card in cards:
         markup.add(
             types.InlineKeyboardButton(
@@ -143,7 +143,7 @@ def build_duel_selection_keyboard(cards: list[dict]) -> types.InlineKeyboardMark
 
 
 def build_team_selection_keyboard(cards: list[dict], selected_counts: dict[int, int], *, can_ready: bool) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     for card in cards:
         owned_amount = int(card.get("amount", 1))
         selected_amount = selected_counts.get(int(card["id"]), 0)
@@ -166,7 +166,7 @@ def build_team_selection_keyboard(cards: list[dict], selected_counts: dict[int, 
 
 
 def build_duel_action_keyboard() -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     markup.row(
         types.InlineKeyboardButton(TEXT("cg_btn_attack"), callback_data="cg_duel_action:attack"),
         types.InlineKeyboardButton(TEXT("cg_btn_defend"), callback_data="cg_duel_action:defend"),
@@ -176,7 +176,7 @@ def build_duel_action_keyboard() -> types.InlineKeyboardMarkup:
 
 
 def build_team_actor_keyboard(cards) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     for card in cards:
         markup.add(types.InlineKeyboardButton(card.name, callback_data=f"cg_team_actor:{card.instance_id}"))
     markup.add(types.InlineKeyboardButton(TEXT("cg_btn_cancel_battle"), callback_data="cg_battle_cancel"))
@@ -184,7 +184,7 @@ def build_team_actor_keyboard(cards) -> types.InlineKeyboardMarkup:
 
 
 def build_team_action_keyboard() -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     markup.row(
         types.InlineKeyboardButton(TEXT("cg_btn_attack"), callback_data="cg_team_action:attack"),
         types.InlineKeyboardButton(TEXT("cg_btn_defend"), callback_data="cg_team_action:defend"),
@@ -197,7 +197,7 @@ def build_team_action_keyboard() -> types.InlineKeyboardMarkup:
 
 
 def build_team_target_keyboard(cards) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     for card in cards:
         markup.add(types.InlineKeyboardButton(card.name, callback_data=f"cg_team_target:{card.instance_id}"))
     markup.row(

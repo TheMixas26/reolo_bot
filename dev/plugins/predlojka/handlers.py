@@ -241,7 +241,7 @@ async def _acknowledge_submission(message, content: SubmissionContent, user_name
 
 
 def _build_direct_message_markup() -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     markup.add(types.InlineKeyboardButton("Ответить в ЛС", callback_data="dm:reply"))
     markup.add(types.InlineKeyboardButton("Закрыть", callback_data="dm:close"))
     return markup
@@ -463,7 +463,7 @@ def _build_question_answer_post(payload: dict, answer_text: str) -> str:
 
 
 def _build_moderation_markup(*, is_album: bool = False, is_question: bool = False) -> types.InlineKeyboardMarkup:
-    markup = types.InlineKeyboardMarkup()
+    markup = types.InlineKeyboardMarkup(inline_keyboard=[])
     approve_callback = "mod_album:approve" if is_album else "mod:approve"
     reject_callback = "mod_album:reject" if is_album else "mod:reject"
     draft_callback = "mod_album:draft" if is_album else "mod:draft"
