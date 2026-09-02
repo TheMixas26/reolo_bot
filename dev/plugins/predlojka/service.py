@@ -462,7 +462,7 @@ def _build_album_media(self, post: Post, rendered_text: str, parse_mode: str | N
             continue
         caption = rendered_text if index == 0 else None
         if attachment.media_type == MediaType.PHOTO:
-            media.append(types.InputMediaPhoto(file_id, caption=caption, parse_mode=parse_mode))
+            media.append(types.InputMediaPhoto(media=file_id, caption=caption, parse_mode=parse_mode))
         elif attachment.media_type == MediaType.VIDEO:
-            media.append(types.InputMediaVideo(file_id, caption=caption, parse_mode=parse_mode))
+            media.append(types.InputMediaVideo(media=file_id, caption=caption, parse_mode=parse_mode))
     return media

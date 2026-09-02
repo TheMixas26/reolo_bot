@@ -242,8 +242,8 @@ async def _acknowledge_submission(message, content: SubmissionContent, user_name
 
 def _build_direct_message_markup() -> types.InlineKeyboardMarkup:
     keyboard = [
-        [types.InlineKeyboardButton("Ответить в ЛС", callback_data="dm:reply")],
-        [types.InlineKeyboardButton("Закрыть", callback_data="dm:close")],
+        [types.InlineKeyboardButton(text="Ответить в ЛС", callback_data="dm:reply")],
+        [types.InlineKeyboardButton(text="Закрыть", callback_data="dm:close")],
     ]
     return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -470,10 +470,10 @@ def _build_moderation_markup(*, is_album: bool = False, is_question: bool = Fals
     schedule_callback = "mod_album:schedule" if is_album else "mod:schedule"
     approve_label = "Ответить и опубликовать" if is_question and not is_album else "Опубликовать"
     keyboard = [
-        [types.InlineKeyboardButton(approve_label, callback_data=approve_callback)],
-        [types.InlineKeyboardButton("Отклонить", callback_data=reject_callback)],
-        [types.InlineKeyboardButton("В черновик", callback_data=draft_callback)],
-        [types.InlineKeyboardButton("Запланировать", callback_data=schedule_callback)],
+        [types.InlineKeyboardButton(text=approve_label, callback_data=approve_callback)],
+        [types.InlineKeyboardButton(text="Отклонить", callback_data=reject_callback)],
+        [types.InlineKeyboardButton(text="В черновик", callback_data=draft_callback)],
+        [types.InlineKeyboardButton(text="Запланировать", callback_data=schedule_callback)],
     ]
     return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -663,7 +663,7 @@ async def _publish_payload(payload: dict) -> None:
     if content_type == "voice":
         await _bot_call("send_voice", channel, file_id, caption=publish_text, disable_notification=True, parse_mode=parse_mode)
         return
-    raise ValueError(f"Неподдерживаемый тип публикации: {content_type}")
+    raise ValueError(f"Неподдерживаемый тип публикации: {content_type}") # TODO: texts.json
 
 
 def _serialize_album_media(items: list, publish_caption: str) -> list[dict]:
@@ -681,11 +681,11 @@ def _deserialize_album_media(media_items: list[dict]) -> list:
     media = []
     for item in media_items:
         if item["content_type"] == "photo":
-            media.append(types.InputMediaPhoto(item["file_id"], caption=item.get("caption")))
+            media.append(types.InputMediaPhoto(media=item["file_id"], caption=item.get("caption")))
         elif item["content_type"] == "video":
-            media.append(types.InputMediaVideo(item["file_id"], caption=item.get("caption")))
+            media.append(types.InputMediaVideo(media=item["file_id"], caption=item.get("caption")))
         else:
-            raise ValueError(f"Неподдерживаемый элемент альбома: {item['content_type']}")
+            raise ValueError(f"Неподдерживаемый элемент альбома: {item['content_type']}") # TODO: texts.json
     return media
 
 
