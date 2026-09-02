@@ -152,7 +152,7 @@ def format_weather_message(forecast_data: list[dict]) -> str:
         wind = round(forecast["wind_speed"], 1)
         icon = forecast["icon"]
 
-        message += TEXT("weather_message/hour_info", hour=hour, icon=icon, temp=temp)
+        message += TEXT("weather_message/hour_info", hour=hour, icon=icon, temp=temp, wind=wind)
 
     temps = [f["temperature"] for f in forecast_data]
     if temps:

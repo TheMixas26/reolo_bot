@@ -16,14 +16,14 @@ async def publish_due_scheduled_posts() -> None:
         return
 
     async with scheduled_publish_lock:
-        due_posts = get_due_scheduled_posts()
+        due_posts = await get_due_scheduled_posts()
         for record in due_posts:
             try:
                 if record["content_type"] == "album":
                     await handlers._publish_album_payload(record["payload"])
                 else:
                     await handlers._publish_payload(record["payload"])
-                remove_scheduled_post(record["doc_id"])
+                await remove_scheduled_post(record["doc_id"])
                 log_event(
                     "scheduled_post_published",
                     bot="predlojka",
