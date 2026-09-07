@@ -150,7 +150,7 @@ def create_post_from_message(message, *, append_author_signature: bool = True) -
         post.text_parse_mode = text_parse_mode
         return post
 
-def create_post_from_media_group(self, messages: list) -> Post:
+def create_post_from_media_group(messages: list) -> Post:
         if not messages:
             raise ValueError("Пустая медиагруппа")
 
@@ -163,12 +163,12 @@ def create_post_from_media_group(self, messages: list) -> Post:
 
         first_message = messages[0]
         raw_text = "\n".join(item.caption for item in messages if item.caption)
-        formatted_source, _ = self._resolve_album_text_payload(messages)
-        formatted_text = self._strip_submission_tags_from_formatted_text(formatted_source) if formatted_source else None
+        formatted_source, _ = _resolve_album_text_payload(messages)
+        formatted_text = _strip_submission_tags_from_formatted_text(formatted_source) if formatted_source else None
         text_parse_mode = "HTML" if formatted_text else None
         author = PostAuthor(
             user_id=first_message.from_user.id,
-            display_name=self.build_display_name(first_message.from_user),
+            display_name=build_display_name(first_message.from_user),
             username=getattr(first_message.from_user, "username", None),
         )
         origin = PostOrigin(
@@ -181,7 +181,7 @@ def create_post_from_media_group(self, messages: list) -> Post:
         post = PostFactory.create_submission_post(author=author, origin=origin, raw_text=raw_text, attachments=attachments)
         post.formatted_text = formatted_text
         post.text_parse_mode = text_parse_mode
-        return post    
+        return post
 
 
 

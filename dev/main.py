@@ -150,11 +150,10 @@ async def run(skip_tests: bool = False, notify_admin: bool = False) -> None:
 
     try:
         await context.start_telegram_bots()
-    finally:
-        scheduler.shutdown(wait=False)
         if notify_admin:
             await context.predlojka_bot.send_message(context.admin, TEXT("successfully_started"))
-        
+    finally:
+        scheduler.shutdown(wait=False)
         await context.close_telegram_bots()
 
 

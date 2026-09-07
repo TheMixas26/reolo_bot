@@ -4,9 +4,11 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKey
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
+from core.context import AppContext
 from varibles import TEXT
 from core.core_plugin.stats import log_command_usage, log_event
-from .service import edit_currency_info, view_currency_info, send_money, bank_get_balance, get_money
+from .service import edit_currency_info, view_currency_info, send_money, bank_get_balance, get_money, DiceHistory, DiceHistoryLimitError
+from .db import get_balance, set_balance
 
 from database.sqlite_db import user_exists, create_user_if_missing
 
@@ -26,8 +28,12 @@ predlojka_router = Router(name="bank-predlojka")
 bank_router = Router(name="bank-plugin")
 
 
-def register_handlers(context):
+history = DiceHistory()
+
+
+def register_handlers(context: AppContext):
     admin_id = context.admin_id
+    bank_bot = context.bank_bot
 
 
     @predlojka_router.message(Command("edit_currency"))
@@ -178,6 +184,51 @@ def register_handlers(context):
 
         await get_money(message, amount)
         await state.clear()
+
+    @bank_router.message(Command("dice"))
+    async def command_dice(message: Message):
+        log_command_usage("bank_bot", "dice")
+        if message.text.split() < 2:
+            await message.reply(TEXT("dice_info"))
+            return
+        if message.text.split() > 2:
+            await message.reply(TEXT("err", "wrong_dice_usage"))
+            return
+
+        try:
+            balance = await get_balance(message.from_user.id)
+            _, bet = message.text.split()
+
+            if balance < bet:
+                await message.reply(TEXT("err", "not_enought_money"))
+                return
+            
+            remains = await history.increase(message.from_user.id)
+
+            result: Message = await bank_bot.send_dice(message.from_user.id)
+
+            if result.dice.value <= 3:
+                await result.reply(TEXT("dice/lose", remains=remains))
+                await set_balance(message.from_user.id, balance - bet)
+                return
+        
+            elif result.dice.value > 3:
+                await result.reply(TEXT("dice/win", remains=remains))
+                await set_balance(message.from_user.id, balance*1.5)
+                return
+
+            else:
+                raise ValueError
+
+
+        except DiceHistoryLimitError:
+            await message.reply(TEXT("err/dice_limit"))
+            return
+
+        except Exception as e:
+            await message.reply("err/unknown_error")
+            await bank_bot.send_message(admin_id, e)
+            return
 
 
 

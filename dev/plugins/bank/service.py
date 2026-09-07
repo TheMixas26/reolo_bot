@@ -11,6 +11,61 @@ from settings import BANK_TRANSFER_COMMISSION, CURRENCY_NAME_GENITIVE
 CURRENCY_INFO_PATH = Path("dev/varibles/currency_info.txt")
 
 
+class DiceHistoryError(Exception):
+    """Базовая ошибка DiceHistory."""
+class DiceHistoryLimitError(DiceHistoryError):
+    """Попытка увеличить значение выше допустимого лимита."""
+
+class DiceHistory:
+    MAX_VALUE = 10
+
+    def __init__(self):
+        self._history: dict[int, int] = {}
+
+    async def get(self, user_id: int) -> int:
+        """Возвращает текущее значение пользователя. Если пользователя нет — 0."""
+        return self._history.get(user_id, 0)
+
+    async def increase(self, user_id: int, amount: int = 1) -> int:
+        """Увеличивает значение пользователя и возвращает новое значение."""
+        current = await self.get(user_id)
+        new_value = current + amount
+
+        if new_value > self.MAX_VALUE:
+            raise DiceHistoryLimitError(
+                f"Cannot increase user {user_id}: "
+                f"{current} + {amount} > {self.MAX_VALUE}"
+            )
+
+        self._history[user_id] = new_value
+        return new_value
+
+    async def decrease(self, user_id: int, amount: int = 1) -> int:
+        """Уменьшает значение пользователя, но не ниже 0."""
+        current = await self.get(user_id)
+        new_value = max(0, current - amount)
+
+        self._history[user_id] = new_value
+        return new_value
+
+    async def remove(self, user_id: int) -> None:
+        """Полностью удаляет пользователя из истории."""
+        self._history.pop(user_id, None)
+
+    def __contains__(self, user_id: int) -> bool:
+        return user_id in self._history
+
+    def __len__(self) -> int:
+        return len(self._history)
+
+    def tick(self) -> None:
+        for user_id in list(self._history):
+            self._history[user_id] -= 1
+
+            if self._history[user_id] <= 0:
+                del self._history[user_id]
+
+
 def edit_currency_info(message, bats: int, rubles: int) -> None:
     """Обновляет данные о валюте в файле."""
     CURRENCY_INFO_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -33,7 +88,7 @@ def view_currency_info() -> str:
     with CURRENCY_INFO_PATH.open("r") as f:
         currency_info = f.read().split(', ') 
 
-    exchange_rate = currency_info[0] / currency_info[1]
+    exchange_rate = int(currency_info[0]) / int(currency_info[1])
     return f"{exchange_rate} {CURRENCY_NAME_GENITIVE.lower()} равняются 1 рублю"
 
 
@@ -75,6 +130,10 @@ async def get_money(message, amount: int) -> None:
 
 
 async def send_money(message, amount: int) -> bool:
+    if amount <= 0:
+        await message.answer(TEXT("err", "not_enought_money"))
+        return False
+
     sender_balance = await get_balance(message.from_user.id)
 
     if sender_balance < amount:
